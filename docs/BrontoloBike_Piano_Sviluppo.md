@@ -19,7 +19,7 @@ Supabase è stato scelto perché gestisce in un unico servizio gratuito sia il d
 
 ## Blocchi di lavoro
 
-- [ ] **Blocco 0 – Avvio progetto** (~1-1,5h)
+- [x] **Blocco 0 – Avvio progetto** (~1-1,5h)
   Creazione del progetto (Next.js), repository GitHub collegato, deploy automatico su Vercel, creazione del progetto Supabase. Risultato: una pagina vuota online, raggiungibile da un URL pubblico.
 
 - [ ] **Blocco 1 – Schema dati e importazione atleti** (~2h)
