@@ -25,8 +25,9 @@ Supabase è stato scelto perché gestisce in un unico servizio gratuito sia il d
 - [x] **Blocco 1 – Schema dati e importazione atleti** (~2h)
   Progettazione delle tabelle (Atleti, Eventi, Percorsi, Registrazioni, Tipologie evento, Stagioni) su Supabase. Importazione dei 377 atleti dal file Excel fornito. Risultato: i dati del roster sono nel database e consultabili.
 
-- [ ] **Blocco 2 – Autenticazione** (~2h)
+- [x] **Blocco 2 – Autenticazione** (~2h)
   Configurazione login Google e Facebook tramite Supabase Auth, più la modalità senza credenziali (selezione nome dalla lista atleti). Risultato: un utente può accedere con tutte e tre le modalità.
+  **Nota**: Facebook OAuth rimandato a dopo il Blocco 9 — Google + senza account funzionanti.
 
 - [ ] **Blocco 3 – Registrazione evento e calcolo punteggio** (~2h)
   Form di inserimento manuale evento (nome, tipologia, km, dislivello, percorsi multipli, stato completato/parziale) e implementazione della formula di punteggio con arrotondamento per eccesso ed eccezione PuntiFissi. Risultato: un atleta può registrare un evento e vedere il punteggio calcolato correttamente.
