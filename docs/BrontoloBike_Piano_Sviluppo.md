@@ -22,7 +22,7 @@ Supabase è stato scelto perché gestisce in un unico servizio gratuito sia il d
 - [x] **Blocco 0 – Avvio progetto** (~1-1,5h)
   Creazione del progetto (Next.js), repository GitHub collegato, deploy automatico su Vercel, creazione del progetto Supabase. Risultato: una pagina vuota online, raggiungibile da un URL pubblico.
 
-- [ ] **Blocco 1 – Schema dati e importazione atleti** (~2h)
+- [x] **Blocco 1 – Schema dati e importazione atleti** (~2h)
   Progettazione delle tabelle (Atleti, Eventi, Percorsi, Registrazioni, Tipologie evento, Stagioni) su Supabase. Importazione dei 377 atleti dal file Excel fornito. Risultato: i dati del roster sono nel database e consultabili.
 
 - [ ] **Blocco 2 – Autenticazione** (~2h)
