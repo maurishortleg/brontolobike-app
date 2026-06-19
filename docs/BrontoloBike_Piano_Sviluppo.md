@@ -29,7 +29,7 @@ Supabase è stato scelto perché gestisce in un unico servizio gratuito sia il d
   Configurazione login Google e Facebook tramite Supabase Auth, più la modalità senza credenziali (selezione nome dalla lista atleti). Risultato: un utente può accedere con tutte e tre le modalità.
   **Nota**: Facebook OAuth rimandato a dopo il Blocco 9 — Google + senza account funzionanti.
 
-- [ ] **Blocco 3 – Registrazione evento e calcolo punteggio** (~2h)
+- [x] **Blocco 3 – Registrazione evento e calcolo punteggio** (~2h)
   Form di inserimento manuale evento (nome, tipologia, km, dislivello, percorsi multipli, stato completato/parziale) e implementazione della formula di punteggio con arrotondamento per eccesso ed eccezione PuntiFissi. Risultato: un atleta può registrare un evento e vedere il punteggio calcolato correttamente.
 
 - [ ] **Blocco 4 – Ricerca AI eventi** (~2h)
