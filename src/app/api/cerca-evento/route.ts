@@ -124,11 +124,12 @@ Per ogni evento trovato, crea un oggetto con:
   - tipologia: tipologia specifica di questo percorso, scelta dalla stessa lista — oppure null
 
 Regole:
-- Considera solo eventi del ${anno}, ignora edizioni di anni precedenti
+- Dai priorità agli eventi del ${anno}. Se non trovi dati completi per il ${anno}, usa i dati dell'edizione più recente disponibile come riferimento per i percorsi (km e dislivello cambiano raramente)
 - Se lo stesso evento appare su più siti, tienilo una volta sola con l'URL più autorevole
-- Cerca TUTTI i percorsi disponibili, anche se sono più di tre
+- Cerca TUTTI i percorsi disponibili nei risultati, anche se sono menzionati in modo sparso nel testo
+- Se trovi km e dislivello anche senza un nome percorso esplicito, includili con nome "Percorso [km] km"
 
-Restituisci SOLO un array JSON valido, senza markdown. Massimo 4 eventi distinti. Se non trovi eventi del ${anno}, restituisci [].
+Restituisci SOLO un array JSON valido, senza markdown. Massimo 4 eventi distinti. Se non trovi nulla di rilevante, restituisci [].
 
 RISULTATI:
 ${textResults}`
@@ -205,12 +206,18 @@ ${textResults}`
             percorsi: ev.percorsi,
           })
         } else {
+          // Aggiorna ma preserva i percorsi esistenti se il nuovo risultato non ne ha
+          const { data: vecchio } = await supabase
+            .from('eventi_ricercati')
+            .select('percorsi')
+            .eq('id', esistente.id)
+            .single()
           await supabase.from('eventi_ricercati').update({
             data: ev.data,
             luogo: ev.luogo,
             tipologia: ev.tipologia,
             url: ev.url,
-            percorsi: ev.percorsi,
+            percorsi: (ev.percorsi?.length > 0) ? ev.percorsi : (vecchio?.percorsi ?? []),
             ultimo_controllo: new Date().toISOString(),
           }).eq('id', esistente.id)
         }

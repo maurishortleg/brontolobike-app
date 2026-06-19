@@ -335,7 +335,7 @@ export default function RegistraClient({
                   onBlur={() => setTimeout(() => setMostraSuggerimenti(false), 150)}
                   onFocus={() => suggerimenti.length > 0 && setMostraSuggerimenti(true)}
                   placeholder="Es. Greenlands Varese 2026"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-900"
                   autoFocus
                 />
                 {/* Dropdown autocomplete dal DB */}
@@ -344,8 +344,8 @@ export default function RegistraClient({
                     {suggerimenti.map((ev, i) => (
                       <div key={i} className="border-b border-gray-100 last:border-0">
                         <div className="px-4 pt-3 pb-1">
-                          <div className="font-medium text-gray-800 text-sm">{ev.nome}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">
+                          <div className="font-medium text-gray-900 text-sm">{ev.nome}</div>
+                          <div className="text-xs text-gray-700 mt-0.5">
                             {ev.data && new Date(ev.data).toLocaleDateString('it-IT')}
                             {ev.luogo && ` · 📍 ${ev.luogo}`}
                             {ev.tipologia && ` · ${ev.tipologia}`}
@@ -359,8 +359,8 @@ export default function RegistraClient({
                                 onMouseDown={() => selezionaEvento(ev, p)}
                                 className="text-left flex items-center justify-between hover:bg-orange-50 rounded-lg px-2 py-1.5 transition-colors"
                               >
-                                <span className="text-sm text-gray-700">{p.nome}</span>
-                                <span className="text-xs text-gray-400 flex gap-2">
+                                <span className="text-sm text-gray-900">{p.nome}</span>
+                                <span className="text-xs text-gray-700 flex gap-2">
                                   <span>{p.km} km</span>
                                   {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
                                 </span>
@@ -421,8 +421,8 @@ export default function RegistraClient({
                     key={i}
                     className="border border-gray-200 rounded-xl p-4"
                   >
-                    <div className="font-semibold text-gray-800 mb-0.5 leading-tight">{ev.nome}</div>
-                    <div className="text-sm text-gray-500 flex flex-wrap gap-3 mb-3">
+                    <div className="font-semibold text-gray-900 mb-0.5 leading-tight">{ev.nome}</div>
+                    <div className="text-sm text-gray-700 flex flex-wrap gap-3 mb-3">
                       {ev.data && <span>{new Date(ev.data).toLocaleDateString('it-IT')}</span>}
                       {ev.luogo && <span>📍 {ev.luogo}</span>}
                       {ev.tipologia && <span className="text-orange-500 font-medium">{ev.tipologia}</span>}
@@ -437,8 +437,8 @@ export default function RegistraClient({
                             onClick={() => selezionaEvento(ev, p)}
                             className="text-left flex items-center justify-between bg-gray-50 hover:bg-orange-50 hover:border-orange-400 border border-gray-200 rounded-lg px-3 py-2.5 transition-colors"
                           >
-                            <span className="font-medium text-gray-800 text-sm">{p.nome}</span>
-                            <span className="text-xs text-gray-500 flex gap-2">
+                            <span className="font-medium text-gray-900 text-sm">{p.nome}</span>
+                            <span className="text-xs text-gray-700 flex gap-2">
                               <span>{p.km} km</span>
                               {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
                             </span>
