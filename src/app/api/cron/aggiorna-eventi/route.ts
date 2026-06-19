@@ -17,6 +17,7 @@ type PercorsoTrovato = {
 type EventoAggiornato = {
   nome: string
   data: string | null
+  luogo: string | null
   tipologia: string | null
   url: string
   percorsi: PercorsoTrovato[]
@@ -146,6 +147,7 @@ export async function GET(req: NextRequest) {
 Restituisci UN SOLO oggetto JSON con:
 - nome: nome aggiornato dell'evento
 - data: data in formato YYYY-MM-DD se trovata, altrimenti null
+- luogo: città o paese di partenza/svolgimento, null se non trovato
 - tipologia: scegli da: ${tipologieStr} — oppure null
 - url: URL più autorevole
 - percorsi: array di tutti i percorsi con { nome, km, dislivello, tipologia }
@@ -212,6 +214,7 @@ ${textResults}`
         .update({
           nome: parsed.nome ?? evento.nome,
           data: parsed.data ?? evento.data,
+          luogo: parsed.luogo ?? evento.luogo,
           tipologia: parsed.tipologia ?? evento.tipologia,
           url: parsed.url ?? evento.url,
           percorsi: parsed.percorsi ?? evento.percorsi,

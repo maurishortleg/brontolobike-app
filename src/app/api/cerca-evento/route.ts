@@ -40,6 +40,7 @@ export type PercorsoTrovato = {
 export type EventoTrovato = {
   nome: string
   data: string | null
+  luogo: string | null
   tipologia: string | null
   url: string
   percorsi: PercorsoTrovato[]
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Query mancante' }, { status: 400 })
   }
 
+  const anno = new Date().getFullYear()
   const tavilyKey = process.env.TAVILY_API_KEY
   if (!tavilyKey) {
     return Response.json({ error: 'Chiave API di ricerca non configurata' }, { status: 500 })
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       api_key: tavilyKey,
-      query: `${query} ciclismo percorsi km dislivello`,
+      query: `${query} ciclismo ${anno} percorsi km dislivello`,
       search_depth: 'advanced',
       max_results: 8,
       include_answer: false,
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         api_key: tavilyKey,
-        query: `${query} ciclismo percorsi km dislivello`,
+        query: `${query} ciclismo ${anno} percorsi km dislivello`,
         search_depth: 'advanced',
         max_results: 8,
         include_answer: false,
@@ -107,25 +109,26 @@ export async function POST(req: NextRequest) {
 
   const tipologieStr = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
 
-  const prompt = `Dai seguenti risultati di ricerca su eventi ciclistici, estrai una lista di eventi in formato JSON.
+  const prompt = `Dai seguenti risultati di ricerca su eventi ciclistici del ${anno}, estrai una lista di eventi in formato JSON.
 
 Per ogni evento trovato, crea un oggetto con:
 - nome: nome completo dell'evento (stringa)
-- data: data in formato YYYY-MM-DD se trovata, altrimenti null
+- data: data in formato YYYY-MM-DD se trovata, altrimenti null. Considera solo date del ${anno}.
+- luogo: città o paese di partenza/svolgimento dell'evento (es. "Varese", "Pinarello di Noale"), null se non trovato
 - tipologia: tipologia prevalente dell'evento, scelta da questa lista: ${tipologieStr} — oppure null
 - url: URL del sito più autorevole (preferisci il sito ufficiale dell'evento, poi siti specializzati)
 - percorsi: array con TUTTI i percorsi disponibili per quell'evento. Ogni percorso ha:
-  - nome: nome ESATTO del percorso come riportato dall'evento (es. "GravelLong", "GravelShort", "103 km Gravel", "65 km MTB") — NON usare nomi generici come "Lungo", "Medio", "Corto" a meno che non siano i nomi ufficiali dell'evento
+  - nome: nome ESATTO del percorso come riportato dall'evento — NON usare nomi generici come "Lungo", "Medio", "Corto" a meno che non siano i nomi ufficiali
   - km: chilometri come numero intero
   - dislivello: dislivello in metri come numero intero, null se non trovato
-  - tipologia: tipologia specifica di questo percorso (può differire dall'evento principale), scelta dalla stessa lista: ${tipologieStr} — oppure null
+  - tipologia: tipologia specifica di questo percorso, scelta dalla stessa lista — oppure null
 
-Regole importanti:
-- Se lo stesso evento appare su più siti, tienilo una volta sola usando l'URL più autorevole
+Regole:
+- Considera solo eventi del ${anno}, ignora edizioni di anni precedenti
+- Se lo stesso evento appare su più siti, tienilo una volta sola con l'URL più autorevole
 - Cerca TUTTI i percorsi disponibili, anche se sono più di tre
-- Se un percorso ha tipologia diversa dagli altri (es. uno Gravel e uno MTB), indicalo nel campo tipologia del percorso
 
-Restituisci SOLO un array JSON valido, senza markdown, senza testo aggiuntivo. Massimo 4 eventi distinti. Se non trovi eventi chiari, restituisci [].
+Restituisci SOLO un array JSON valido, senza markdown. Massimo 4 eventi distinti. Se non trovi eventi del ${anno}, restituisci [].
 
 RISULTATI:
 ${textResults}`
@@ -149,7 +152,6 @@ ${textResults}`
 
   const geminiData = await geminiRes.json()
   const text: string = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
-
   if (!text) return Response.json({ risultati: [] })
 
   const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
@@ -180,30 +182,37 @@ ${textResults}`
     return Response.json({ risultati: [] })
   }
 
-  // Salva i risultati nel database per autocomplete futuro
+  // Salva nel database per autocomplete futuro
   if (risultati.length > 0) {
     try {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       )
-      const righe = risultati.map((ev) => ({
-        nome: ev.nome,
-        data: ev.data,
-        tipologia: ev.tipologia,
-        url: ev.url,
-        percorsi: ev.percorsi,
-      }))
-      // Inserisce solo se l'evento non esiste già (stesso nome e stessa data)
-      for (const riga of righe) {
+      for (const ev of risultati) {
         const { data: esistente } = await supabase
           .from('eventi_ricercati')
           .select('id')
-          .ilike('nome', riga.nome)
-          .eq('data', riga.data ?? '')
+          .ilike('nome', ev.nome)
           .maybeSingle()
         if (!esistente) {
-          await supabase.from('eventi_ricercati').insert(riga)
+          await supabase.from('eventi_ricercati').insert({
+            nome: ev.nome,
+            data: ev.data,
+            luogo: ev.luogo,
+            tipologia: ev.tipologia,
+            url: ev.url,
+            percorsi: ev.percorsi,
+          })
+        } else {
+          await supabase.from('eventi_ricercati').update({
+            data: ev.data,
+            luogo: ev.luogo,
+            tipologia: ev.tipologia,
+            url: ev.url,
+            percorsi: ev.percorsi,
+            ultimo_controllo: new Date().toISOString(),
+          }).eq('id', esistente.id)
         }
       }
     } catch (e) {

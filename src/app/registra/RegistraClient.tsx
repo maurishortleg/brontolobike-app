@@ -30,6 +30,7 @@ type PercorsoTrovato = {
 type EventoTrovato = {
   nome: string
   data: string | null
+  luogo: string | null
   tipologia: string | null
   url: string
   percorsi: PercorsoTrovato[]
@@ -139,7 +140,7 @@ export default function RegistraClient({
     return match ? match.id : ''
   }
 
-  function selezionaEvento(ev: EventoTrovato) {
+  function selezionaEvento(ev: EventoTrovato, percorsoScelto?: PercorsoTrovato) {
     setMostraSuggerimenti(false)
     setNomeEvento(ev.nome)
     if (ev.data) setDataEvento(ev.data)
@@ -156,7 +157,21 @@ export default function RegistraClient({
       : [{ nome_percorso: '', tipologia_id: tipologiaEventoId, km: '', dislivello_m: '' }]
 
     setPercorsi(percorsiPrecompilati)
-    setPercorsoSelezionato(0)
+
+    // Se l'utente ha cliccato un percorso specifico, mostra solo quello nel form
+    if (percorsoScelto) {
+      const soloPercorso: Percorso = {
+        nome_percorso: percorsoScelto.nome,
+        tipologia_id: trovaTipologiaId(percorsoScelto.tipologia) || tipologiaEventoId,
+        km: String(percorsoScelto.km),
+        dislivello_m: percorsoScelto.dislivello != null ? String(percorsoScelto.dislivello) : '',
+      }
+      setPercorsi([soloPercorso])
+      setPercorsoSelezionato(0)
+    } else {
+      setPercorsoSelezionato(0)
+    }
+
     setFase('form')
   }
 
@@ -327,18 +342,40 @@ export default function RegistraClient({
                 {mostraSuggerimenti && suggerimenti.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
                     {suggerimenti.map((ev, i) => (
-                      <button
-                        key={i}
-                        onMouseDown={() => selezionaEvento(ev)}
-                        className="w-full text-left px-4 py-3 hover:bg-orange-50 border-b border-gray-100 last:border-0"
-                      >
-                        <div className="font-medium text-gray-800 text-sm">{ev.nome}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {ev.data && new Date(ev.data).toLocaleDateString('it-IT')}
-                          {ev.tipologia && ` · ${ev.tipologia}`}
-                          {ev.percorsi?.length > 0 && ` · ${ev.percorsi.length} percorsi`}
+                      <div key={i} className="border-b border-gray-100 last:border-0">
+                        <div className="px-4 pt-3 pb-1">
+                          <div className="font-medium text-gray-800 text-sm">{ev.nome}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            {ev.data && new Date(ev.data).toLocaleDateString('it-IT')}
+                            {ev.luogo && ` · 📍 ${ev.luogo}`}
+                            {ev.tipologia && ` · ${ev.tipologia}`}
+                          </div>
                         </div>
-                      </button>
+                        {ev.percorsi?.length > 0 ? (
+                          <div className="px-4 pb-2 flex flex-col gap-1">
+                            {ev.percorsi.map((p, j) => (
+                              <button
+                                key={j}
+                                onMouseDown={() => selezionaEvento(ev, p)}
+                                className="text-left flex items-center justify-between hover:bg-orange-50 rounded-lg px-2 py-1.5 transition-colors"
+                              >
+                                <span className="text-sm text-gray-700">{p.nome}</span>
+                                <span className="text-xs text-gray-400 flex gap-2">
+                                  <span>{p.km} km</span>
+                                  {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <button
+                            onMouseDown={() => selezionaEvento(ev)}
+                            className="w-full text-left px-4 pb-3 text-xs text-orange-500"
+                          >
+                            Seleziona →
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -380,26 +417,49 @@ export default function RegistraClient({
               </p>
               <div className="flex flex-col gap-2">
                 {listaVisibile.map((ev, i) => (
-                  <button
+                  <div
                     key={i}
-                    onClick={() => selezionaEvento(ev)}
-                    className="text-left border border-gray-200 rounded-xl p-4 hover:border-orange-400 hover:bg-orange-50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    className="border border-gray-200 rounded-xl p-4"
                   >
-                    <div className="font-semibold text-gray-800 mb-1 leading-tight">{ev.nome}</div>
-                    <div className="text-sm text-gray-500 flex flex-wrap gap-3 mb-2">
+                    <div className="font-semibold text-gray-800 mb-0.5 leading-tight">{ev.nome}</div>
+                    <div className="text-sm text-gray-500 flex flex-wrap gap-3 mb-3">
                       {ev.data && <span>{new Date(ev.data).toLocaleDateString('it-IT')}</span>}
+                      {ev.luogo && <span>📍 {ev.luogo}</span>}
                       {ev.tipologia && <span className="text-orange-500 font-medium">{ev.tipologia}</span>}
                     </div>
-                    {ev.percorsi?.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
+
+                    {ev.percorsi?.length > 0 ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-gray-400 font-medium">Scegli il tuo percorso:</p>
                         {ev.percorsi.map((p, j) => (
-                          <span key={j} className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
-                            {p.nome} · {p.km} km{p.dislivello != null ? ` · ${p.dislivello} m ↑` : ''}
-                          </span>
+                          <button
+                            key={j}
+                            onClick={() => selezionaEvento(ev, p)}
+                            className="text-left flex items-center justify-between bg-gray-50 hover:bg-orange-50 hover:border-orange-400 border border-gray-200 rounded-lg px-3 py-2.5 transition-colors"
+                          >
+                            <span className="font-medium text-gray-800 text-sm">{p.nome}</span>
+                            <span className="text-xs text-gray-500 flex gap-2">
+                              <span>{p.km} km</span>
+                              {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
+                            </span>
+                          </button>
                         ))}
+                        <button
+                          onClick={() => selezionaEvento(ev)}
+                          className="text-xs text-gray-400 hover:text-gray-600 text-left mt-1"
+                        >
+                          Vedi tutti i percorsi nel form →
+                        </button>
                       </div>
+                    ) : (
+                      <button
+                        onClick={() => selezionaEvento(ev)}
+                        className="text-sm text-orange-500 font-medium hover:underline"
+                      >
+                        Seleziona evento →
+                      </button>
                     )}
-                  </button>
+                  </div>
                 ))}
             </div>
             </div>
