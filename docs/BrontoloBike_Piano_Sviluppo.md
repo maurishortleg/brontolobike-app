@@ -32,7 +32,7 @@ Supabase è stato scelto perché gestisce in un unico servizio gratuito sia il d
 - [x] **Blocco 3 – Registrazione evento e calcolo punteggio** (~2h)
   Form di inserimento manuale evento (nome, tipologia, km, dislivello, percorsi multipli, stato completato/parziale) e implementazione della formula di punteggio con arrotondamento per eccesso ed eccezione PuntiFissi. Risultato: un atleta può registrare un evento e vedere il punteggio calcolato correttamente.
 
-- [ ] **Blocco 4 – Ricerca AI eventi** (~2h)
+- [x] **Blocco 4 – Ricerca AI eventi** (~2h)
   Integrazione dell'API di ricerca scelta (Tavily o Brave), interfaccia per proporre eventi trovati come opzioni selezionabili, con fallback all'inserimento manuale del Blocco 3 se non trova nulla. Risultato: la ricerca AI propone eventi reali selezionabili dall'atleta.
 
 - [ ] **Blocco 5 – Calendario** (~1,5-2h)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { calcolaPunteggio } from '@/lib/punteggio'
 import { useRouter } from 'next/navigation'
@@ -20,6 +20,21 @@ type Percorso = {
   dislivello_m: string
 }
 
+type PercorsoTrovato = {
+  nome: string
+  km: number
+  dislivello: number | null
+  tipologia: string | null
+}
+
+type EventoTrovato = {
+  nome: string
+  data: string | null
+  tipologia: string | null
+  url: string
+  percorsi: PercorsoTrovato[]
+}
+
 export default function RegistraClient({
   tipologie,
   atletaIdServer,
@@ -32,6 +47,17 @@ export default function RegistraClient({
   const supabase = createSupabaseBrowserClient()
   const router = useRouter()
 
+  // --- Search phase state ---
+  const [fase, setFase] = useState<'cerca' | 'form'>('cerca')
+  const [queryRicerca, setQueryRicerca] = useState('')
+  const [loadingRicerca, setLoadingRicerca] = useState(false)
+  const [risultatiRicerca, setRisultatiRicerca] = useState<EventoTrovato[]>([])
+  const [suggerimenti, setSuggerimenti] = useState<EventoTrovato[]>([])
+  const [mostraSuggerimenti, setMostraSuggerimenti] = useState(false)
+  const [erroreRicerca, setErroreRicerca] = useState('')
+  const autocompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // --- Form state ---
   const [atletaId, setAtletaId] = useState<string | null>(atletaIdServer)
   const [nomeEvento, setNomeEvento] = useState('')
   const [dataEvento, setDataEvento] = useState('')
@@ -53,6 +79,94 @@ export default function RegistraClient({
     }
   }, [atletaIdServer])
 
+  // Autocomplete dal DB mentre l'utente digita
+  function onQueryChange(val: string) {
+    setQueryRicerca(val)
+    setRisultatiRicerca([])
+    setErroreRicerca('')
+
+    if (autocompleteTimer.current) clearTimeout(autocompleteTimer.current)
+
+    if (val.trim().length < 2) {
+      setSuggerimenti([])
+      setMostraSuggerimenti(false)
+      return
+    }
+
+    autocompleteTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/eventi-db?q=${encodeURIComponent(val.trim())}`)
+        const data = await res.json()
+        setSuggerimenti(data.risultati ?? [])
+        setMostraSuggerimenti((data.risultati ?? []).length > 0)
+      } catch {
+        setSuggerimenti([])
+      }
+    }, 300)
+  }
+
+  // Cerca con AI (Tavily + Gemini)
+  async function cercaConAI() {
+    if (!queryRicerca.trim()) return
+    setMostraSuggerimenti(false)
+    setLoadingRicerca(true)
+    setErroreRicerca('')
+    setRisultatiRicerca([])
+    try {
+      const res = await fetch('/api/cerca-evento', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryRicerca }),
+      })
+      const data = await res.json()
+      const trovati: EventoTrovato[] = data.risultati ?? []
+      setRisultatiRicerca(trovati)
+      if (trovati.length === 0) {
+        setErroreRicerca('Nessun evento trovato. Puoi inserire i dati manualmente.')
+      }
+    } catch {
+      setErroreRicerca('Errore nella ricerca. Inserisci i dati manualmente.')
+    } finally {
+      setLoadingRicerca(false)
+    }
+  }
+
+  function trovaTipologiaId(nomeTipologia: string | null): number | '' {
+    if (!nomeTipologia) return ''
+    const match = tipologie.find(
+      (t) => t.nome.toLowerCase() === nomeTipologia.toLowerCase()
+    )
+    return match ? match.id : ''
+  }
+
+  function selezionaEvento(ev: EventoTrovato) {
+    setMostraSuggerimenti(false)
+    setNomeEvento(ev.nome)
+    if (ev.data) setDataEvento(ev.data)
+
+    const tipologiaEventoId = trovaTipologiaId(ev.tipologia)
+
+    const percorsiPrecompilati: Percorso[] = ev.percorsi?.length > 0
+      ? ev.percorsi.map((p) => ({
+          nome_percorso: p.nome,
+          tipologia_id: trovaTipologiaId(p.tipologia) || tipologiaEventoId,
+          km: String(p.km),
+          dislivello_m: p.dislivello != null ? String(p.dislivello) : '',
+        }))
+      : [{ nome_percorso: '', tipologia_id: tipologiaEventoId, km: '', dislivello_m: '' }]
+
+    setPercorsi(percorsiPrecompilati)
+    setPercorsoSelezionato(0)
+    setFase('form')
+  }
+
+  function vaiAlForm() {
+    setMostraSuggerimenti(false)
+    if (queryRicerca.trim() && nomeEvento === '') setNomeEvento(queryRicerca)
+    setFase('form')
+  }
+
+  // --- Form logic ---
   function aggiornaPercorso(idx: number, campo: keyof Percorso, valore: string | number) {
     setPercorsi((prev) =>
       prev.map((p, i) => (i === idx ? { ...p, [campo]: valore } : p))
@@ -95,6 +209,11 @@ export default function RegistraClient({
     setCompletato(true)
     setKmEffettivi('')
     setDislivelloEff('')
+    setQueryRicerca('')
+    setRisultatiRicerca([])
+    setSuggerimenti([])
+    setErroreRicerca('')
+    setFase('cerca')
   }
 
   async function salva() {
@@ -153,6 +272,7 @@ export default function RegistraClient({
     setLoading(false)
   }
 
+  // --- Success screen ---
   if (successo !== null) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -173,12 +293,145 @@ export default function RegistraClient({
     )
   }
 
+  // --- Search phase ---
+  if (fase === 'cerca') {
+    const listaVisibile = risultatiRicerca.length > 0 ? risultatiRicerca : []
+
+    return (
+      <div className="min-h-screen bg-gray-50 py-10 px-4">
+        <div className="max-w-lg mx-auto bg-white rounded-2xl shadow p-6">
+          <h1 className="text-2xl font-bold text-gray-800 mb-1">Registra evento</h1>
+          <p className="text-sm text-gray-500 mb-6">
+            Cerca l&apos;evento per compilare i dati automaticamente
+          </p>
+
+          {/* Search bar con autocomplete */}
+          <div className="relative mb-4">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={queryRicerca}
+                  onChange={(e) => onQueryChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { setMostraSuggerimenti(false); cercaConAI() }
+                    if (e.key === 'Escape') setMostraSuggerimenti(false)
+                  }}
+                  onBlur={() => setTimeout(() => setMostraSuggerimenti(false), 150)}
+                  onFocus={() => suggerimenti.length > 0 && setMostraSuggerimenti(true)}
+                  placeholder="Es. Greenlands Varese 2026"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  autoFocus
+                />
+                {/* Dropdown autocomplete dal DB */}
+                {mostraSuggerimenti && suggerimenti.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
+                    {suggerimenti.map((ev, i) => (
+                      <button
+                        key={i}
+                        onMouseDown={() => selezionaEvento(ev)}
+                        className="w-full text-left px-4 py-3 hover:bg-orange-50 border-b border-gray-100 last:border-0"
+                      >
+                        <div className="font-medium text-gray-800 text-sm">{ev.nome}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {ev.data && new Date(ev.data).toLocaleDateString('it-IT')}
+                          {ev.tipologia && ` · ${ev.tipologia}`}
+                          {ev.percorsi?.length > 0 && ` · ${ev.percorsi.length} percorsi`}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={cercaConAI}
+                disabled={loadingRicerca || !queryRicerca.trim()}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+              >
+                {loadingRicerca ? '...' : 'Cerca'}
+              </button>
+            </div>
+            {queryRicerca.length >= 2 && !mostraSuggerimenti && !loadingRicerca && risultatiRicerca.length === 0 && !erroreRicerca && (
+              <p className="text-xs text-gray-400 mt-1.5">
+                Premi <strong>Cerca</strong> per cercare online con AI
+              </p>
+            )}
+          </div>
+
+          {/* Loading indicator */}
+          {loadingRicerca && (
+            <div className="text-center py-6 text-gray-400 text-sm">
+              Ricerca in corso con AI...
+            </div>
+          )}
+
+          {/* Error/empty */}
+          {erroreRicerca && !loadingRicerca && (
+            <p className="text-sm text-gray-500 mb-4 bg-gray-50 rounded-lg p-3">
+              {erroreRicerca}
+            </p>
+          )}
+
+          {/* Results from AI */}
+          {listaVisibile.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">
+                Risultati trovati — clicca per selezionare
+              </p>
+              <div className="flex flex-col gap-2">
+                {listaVisibile.map((ev, i) => (
+                  <button
+                    key={i}
+                    onClick={() => selezionaEvento(ev)}
+                    className="text-left border border-gray-200 rounded-xl p-4 hover:border-orange-400 hover:bg-orange-50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  >
+                    <div className="font-semibold text-gray-800 mb-1 leading-tight">{ev.nome}</div>
+                    <div className="text-sm text-gray-500 flex flex-wrap gap-3 mb-2">
+                      {ev.data && <span>{new Date(ev.data).toLocaleDateString('it-IT')}</span>}
+                      {ev.tipologia && <span className="text-orange-500 font-medium">{ev.tipologia}</span>}
+                    </div>
+                    {ev.percorsi?.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {ev.percorsi.map((p, j) => (
+                          <span key={j} className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">
+                            {p.nome} · {p.km} km{p.dislivello != null ? ` · ${p.dislivello} m ↑` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                ))}
+            </div>
+            </div>
+          )}
+
+          {/* Manual fallback */}
+          <button
+            onClick={vaiAlForm}
+            className="text-sm text-orange-500 hover:text-orange-600 font-medium mt-2 hover:underline"
+          >
+            Inserisci manualmente →
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // --- Form phase ---
   const anteprima = calcolaAnteprima()
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-lg mx-auto bg-white rounded-2xl shadow p-6">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Registra evento</h1>
+        <div className="flex items-center gap-3 mb-6">
+          <button
+            onClick={() => setFase('cerca')}
+            className="text-gray-400 hover:text-gray-600 text-sm"
+          >
+            ← Cerca
+          </button>
+          <h1 className="text-2xl font-bold text-gray-800">Registra evento</h1>
+        </div>
 
         {errore && <p className="text-red-500 text-sm mb-4 bg-red-50 rounded-lg p-3">{errore}</p>}
 
@@ -203,9 +456,7 @@ export default function RegistraClient({
 
         {/* Percorsi */}
         <div className="mb-2 flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">
-            Percorsi disponibili
-          </label>
+          <label className="text-sm font-medium text-gray-700">Percorsi disponibili</label>
           <button
             type="button"
             onClick={aggiungiPercorso}
@@ -230,7 +481,6 @@ export default function RegistraClient({
                 }`}
                 onClick={() => setPercorsoSelezionato(idx)}
               >
-                {/* Header percorso */}
                 <div className="flex items-center gap-3 mb-3">
                   <input
                     type="radio"
@@ -244,7 +494,7 @@ export default function RegistraClient({
                     value={p.nome_percorso}
                     onChange={(e) => { e.stopPropagation(); aggiornaPercorso(idx, 'nome_percorso', e.target.value) }}
                     onClick={(e) => e.stopPropagation()}
-                    placeholder="Nome percorso (es. Lungo Gravel, Medio Strada…)"
+                    placeholder="Nome percorso"
                     className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
                   />
                   {percorsi.length > 1 && (
@@ -257,7 +507,6 @@ export default function RegistraClient({
                   )}
                 </div>
 
-                {/* Km e Dislivello in evidenza */}
                 <div className="flex gap-3 mb-3">
                   <div className="flex-1 bg-white rounded-lg border border-gray-200 p-3 text-center">
                     <input
@@ -286,7 +535,6 @@ export default function RegistraClient({
                   </div>
                 </div>
 
-                {/* Tipologia per percorso */}
                 <select
                   value={p.tipologia_id}
                   onChange={(e) => { e.stopPropagation(); aggiornaPercorso(idx, 'tipologia_id', Number(e.target.value)) }}
@@ -299,7 +547,6 @@ export default function RegistraClient({
                   ))}
                 </select>
 
-                {/* Anteprima punti per questo percorso */}
                 {tip && p.km && p.dislivello_m && (
                   <div className="mt-2 text-right text-xs text-orange-500 font-medium">
                     {calcolaPunteggio(tip, parseFloat(p.km), parseInt(p.dislivello_m))} punti
@@ -335,7 +582,6 @@ export default function RegistraClient({
           </button>
         </div>
 
-        {/* Km effettivi per parziale */}
         {!completato && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
             <p className="text-sm text-yellow-800 mb-3">
@@ -369,7 +615,6 @@ export default function RegistraClient({
           </div>
         )}
 
-        {/* Anteprima punteggio finale */}
         {anteprima !== null && (
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-4 text-center">
             <span className="text-sm text-gray-500">Punteggio che verrà assegnato: </span>
