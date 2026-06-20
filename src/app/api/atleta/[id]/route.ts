@@ -23,14 +23,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const atleta = atletaList?.[0] ?? null
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
-  // 2. Tutti gli eventi dell'anno (una volta sola)
+  // 2. Tutti gli eventi dell'anno — solo id e data per il calcolo punti
   const { data: eventiAnno } = await supabase
     .from('eventi')
-    .select('id, nome, data_evento, luogo, url')
+    .select('id, data_evento')
     .gte('data_evento', inizioAnno)
 
   const eventoIdSet = new Set((eventiAnno ?? []).map((e: any) => e.id))
-  const eventoMap = Object.fromEntries((eventiAnno ?? []).map((e: any) => [e.id, e]))
+  // Mappa completa con dettagli — caricata separatamente per robustezza
+  const eventoMap: Record<string, any> = {}
 
   // 3. Tutti i percorsi collegati a eventi dell'anno
   const eventoIds = [...eventoIdSet]
@@ -85,7 +86,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const finisher = puntiTotali >= sogliaFinisher
   const progressione = Math.min(100, Math.round((puntiTotali / sogliaFinisher) * 100))
 
-  // 7. Storico eventi (solo atleta o admin)
+  // 7. Dettagli eventi per lo storico (solo se serve)
+  if (canSeeEvents && eventoIds.length > 0) {
+    const { data: evDettagli } = await supabase
+      .from('eventi')
+      .select('id, nome, data_evento, luogo, url')
+      .in('id', eventoIds)
+    for (const e of evDettagli ?? []) eventoMap[e.id] = e
+  }
+
+  // 8. Storico eventi (solo atleta o admin)
   const storicoEventi = canSeeEvents
     ? (regs ?? [])
         .map((r: any) => {
