@@ -9,8 +9,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!isAdmin(user)) return Response.json({ error: 'Non autorizzato' }, { status: 403 })
 
-  const admin = createSupabaseAdminClient()
-  const { data } = await admin
+  const { data } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente, categoria_prossima, numero_tessera, attivo')
     .order('nome_cognome')

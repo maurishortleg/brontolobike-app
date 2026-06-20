@@ -12,9 +12,7 @@ export async function GET(req: NextRequest) {
   const atletaId = req.nextUrl.searchParams.get('atleta_id')
   if (!atletaId) return Response.json({ registrazioni: [] })
 
-  const admin = createSupabaseAdminClient()
-
-  const { data: regs } = await admin
+  const { data: regs } = await supabase
     .from('registrazioni')
     .select('id, completato, km_effettivi, punti, percorso_id')
     .eq('atleta_id', atletaId)
@@ -22,12 +20,12 @@ export async function GET(req: NextRequest) {
 
   const percorsoIds = (regs ?? []).map((r: any) => r.percorso_id)
   const { data: percorsi } = percorsoIds.length > 0
-    ? await admin.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
+    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
     : { data: [] }
 
   const eventoIds = [...new Set((percorsi ?? []).map((p: any) => p.evento_id))]
   const { data: eventi_db } = eventoIds.length > 0
-    ? await admin.from('eventi').select('id, nome, data_evento').in('id', eventoIds)
+    ? await supabase.from('eventi').select('id, nome, data_evento').in('id', eventoIds)
     : { data: [] }
 
   const percorsoMap = Object.fromEntries((percorsi ?? []).map((p: any) => [p.id, p]))
