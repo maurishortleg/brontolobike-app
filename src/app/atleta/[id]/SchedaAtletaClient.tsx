@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import PageShell from '@/components/PageShell'
 
 type Evento = {
   data: string
@@ -59,11 +60,8 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
   const categoriaLabel = atleta.categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-lg mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/classifica" className="text-gray-400 hover:text-gray-600 text-sm">← Classifica</Link>
-        </div>
+    <PageShell title="" backHref="/classifica" backLabel="← Classifica">
+      <div>
 
         {/* Card principale */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
@@ -187,6 +185,6 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   )
 }

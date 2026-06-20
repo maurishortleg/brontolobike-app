@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import PageShell from '@/components/PageShell'
 
 type Atleta = {
   id: string
@@ -116,12 +117,8 @@ export default function AdminClient() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <PageShell title="Pannello Admin">
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Home</Link>
-          <h1 className="text-2xl font-bold text-gray-800">Pannello Admin</h1>
-        </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Lista atleti */}
@@ -317,6 +314,6 @@ export default function AdminClient() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   )
 }

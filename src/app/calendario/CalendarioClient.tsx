@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Calendario from '@/app/registra/Calendario'
 import Link from 'next/link'
+import PageShell from '@/components/PageShell'
 
 type Registrazione = {
   evento: string
@@ -36,12 +37,8 @@ export default function CalendarioClient() {
     : null
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-lg mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Home</Link>
-          <h1 className="text-2xl font-bold text-gray-800">Il mio calendario</h1>
-        </div>
+    <PageShell title="Il mio calendario">
+      <div>
 
         <Calendario
           onDataSelezionata={setDataSelezionata}
@@ -93,6 +90,6 @@ export default function CalendarioClient() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   )
 }

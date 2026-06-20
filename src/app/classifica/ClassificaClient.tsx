@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import PageShell from '@/components/PageShell'
 
 type AtletaClassifica = {
   id: string
@@ -50,12 +51,8 @@ export default function ClassificaClient() {
   const finishers = classifica.filter((a) => a.finisher)
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-lg mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Home</Link>
-          <h1 className="text-2xl font-bold text-gray-800">Classifica {anno}</h1>
-        </div>
+    <PageShell title={`Classifica ${anno}`}>
+      <div>
 
         {/* Campione Sociale — solo dopo l'ultima domenica di ottobre */}
         {campione && (
@@ -151,6 +148,6 @@ export default function ClassificaClient() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   )
 }

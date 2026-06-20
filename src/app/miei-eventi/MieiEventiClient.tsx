@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import PageShell from '@/components/PageShell'
 
 type EventoPersonale = {
   id: string
@@ -33,12 +34,8 @@ export default function MieiEventiClient() {
   const puntiTotali = eventi.reduce((acc, e) => acc + e.punti, 0)
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-lg mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Home</Link>
-          <h1 className="text-2xl font-bold text-gray-800">I miei eventi</h1>
-        </div>
+    <PageShell title="I miei eventi">
+      <div>
 
         {!loading && eventi.length > 0 && (
           <div className="bg-orange-500 text-white rounded-xl px-4 py-3 mb-4 flex justify-between items-center">
@@ -99,6 +96,6 @@ export default function MieiEventiClient() {
           </div>
         )}
       </div>
-    </div>
+    </PageShell>
   )
 }
