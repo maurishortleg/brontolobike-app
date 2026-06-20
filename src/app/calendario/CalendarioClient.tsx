@@ -43,6 +43,7 @@ export default function CalendarioClient() {
         <Calendario
           onDataSelezionata={setDataSelezionata}
           dataSelezionata={dataSelezionata}
+          apiPallini="/api/calendario-club"
         />
 
         {!dataSelezionata && (

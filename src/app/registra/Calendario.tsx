@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 type Props = {
   onDataSelezionata: (data: string) => void
   dataSelezionata: string | null
+  apiPallini?: '/api/eventi-calendario' | '/api/calendario-club'
 }
 
 const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom']
@@ -13,7 +14,7 @@ const MESI = [
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
 ]
 
-export default function Calendario({ onDataSelezionata, dataSelezionata }: Props) {
+export default function Calendario({ onDataSelezionata, dataSelezionata, apiPallini = '/api/eventi-calendario' }: Props) {
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
   const [mese, setMese] = useState(oggi.getMonth()) // 0-based
@@ -22,7 +23,7 @@ export default function Calendario({ onDataSelezionata, dataSelezionata }: Props
   const meseStr = `${anno}-${String(mese + 1).padStart(2, '0')}`
 
   useEffect(() => {
-    fetch(`/api/eventi-calendario?mese=${meseStr}`)
+    fetch(`${apiPallini}?mese=${meseStr}`)
       .then((r) => r.json())
       .then((d) => setGiorniConEventi(new Set(d.giorni ?? [])))
       .catch(() => setGiorniConEventi(new Set()))
