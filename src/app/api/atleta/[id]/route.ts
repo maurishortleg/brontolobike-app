@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const inizioAnno = `${anno}-01-01`
 
   // 1. Dati atleta
-  const { data: atletaList, error: dbErr } = await supabase
+  const { data: atletaList } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente, numero_tessera')
     .filter('id', 'eq', id)
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const atleta = atletaList?.[0] ?? null
 
-  if (!atleta) return Response.json({ error: 'Atleta non trovato', id, dbErr, count: atletaList?.length }, { status: 404 })
+  if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
   // 2. Registrazioni dell'atleta (query semplice senza join annidati)
   const { data: regs } = await supabase
