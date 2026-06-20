@@ -11,6 +11,7 @@ export default async function CollegaProfiloPage() {
   const { data: atleti } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente')
+    .eq('attivo', true)
     .order('nome_cognome')
 
   return <CollegaProfiloClient atleti={atleti ?? []} />

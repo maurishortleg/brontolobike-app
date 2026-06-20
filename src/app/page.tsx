@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { isAdmin } from '@/lib/is-admin'
 import Link from 'next/link'
 
 export default async function HomePage() {
@@ -6,6 +7,7 @@ export default async function HomePage() {
   const { data: { user } } = await supabase.auth.getUser()
 
   const atletaId = user?.user_metadata?.atleta_id ?? null
+  const admin = isAdmin(user)
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -60,6 +62,14 @@ export default async function HomePage() {
                   className="w-full border border-orange-300 text-orange-600 hover:bg-orange-50 font-semibold py-3 rounded-lg transition-colors"
                 >
                   Collega il tuo profilo atleta
+                </Link>
+              )}
+              {admin && (
+                <Link
+                  href="/admin"
+                  className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors"
+                >
+                  Pannello Admin
                 </Link>
               )}
               <form action="/auth/logout" method="POST">

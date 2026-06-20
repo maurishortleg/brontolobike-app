@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       )
     `)
     .eq('categoria_corrente', categoria)
+    .eq('attivo', true)
     .order('nome_cognome')
 
   if (!atleti) return Response.json({ classifica: [] })

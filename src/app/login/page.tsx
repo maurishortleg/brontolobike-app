@@ -10,6 +10,7 @@ export default async function LoginPage() {
   const { data: atleti } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente')
+    .eq('attivo', true)
     .order('nome_cognome')
 
   return <LoginClient atleti={atleti ?? []} />
