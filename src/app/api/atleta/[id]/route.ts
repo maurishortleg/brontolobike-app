@@ -9,11 +9,12 @@ function ultimaDomenicaOttobre(anno: number): Date {
 }
 
 // GET /api/atleta/[id]
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   const atletaIdCorrente = user?.user_metadata?.atleta_id ?? null
-  const isMe = atletaIdCorrente === params.id
+  const isMe = atletaIdCorrente === id
   const canSeeEvents = isMe || isAdmin(user)
 
   const anno = new Date().getFullYear()
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const { data: atleta } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente, numero_tessera')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         )
       )
     `)
-    .eq('atleta_id', params.id)
+    .eq('atleta_id', id)
     .order('created_at', { ascending: false })
 
   const puntiTotali = (regs ?? []).reduce((acc, r) => {
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   let posizione = 1
   for (const a of tuttiAtleti ?? []) {
-    if (a.id === params.id) continue
+    if (a.id === id) continue
     const pts = (a.registrazioni ?? []).reduce((acc: number, r: any) => {
       const d = r.percorsi?.eventi?.data_evento
       return d && d >= inizioAnno ? acc + (r.punti ?? 0) : acc

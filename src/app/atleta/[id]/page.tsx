@@ -1,5 +1,6 @@
 import SchedaAtletaClient from './SchedaAtletaClient'
 
-export default function SchedaAtletaPage({ params }: { params: { id: string } }) {
-  return <SchedaAtletaClient atletaId={params.id} />
+export default async function SchedaAtletaPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <SchedaAtletaClient atletaId={id} />
 }
