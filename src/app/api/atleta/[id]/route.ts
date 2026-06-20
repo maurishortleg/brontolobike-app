@@ -24,15 +24,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
-  // DEBUG temporaneo
-  if (req.nextUrl.searchParams.get('debug') === '1') {
-    const { data: regsDbg } = await supabase.from('registrazioni').select('*').eq('atleta_id', id)
-    const pIds = (regsDbg ?? []).map((r: any) => r.percorso_id)
-    const { data: percDbg } = pIds.length > 0 ? await supabase.from('percorsi').select('*').in('id', pIds) : { data: [] }
-    const eIds = [...new Set((percDbg ?? []).map((p: any) => p.evento_id))]
-    const { data: evDbg } = eIds.length > 0 ? await supabase.from('eventi').select('*').in('id', eIds) : { data: [] }
-    return Response.json({ atleta, regs: regsDbg, percorsi: percDbg, eventi: evDbg })
-  }
 
   // 2. Registrazioni dell'atleta (query semplice senza join annidati)
   const { data: regs } = await supabase
@@ -44,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // 3. Percorsi
   const { data: percorsi } = percorsoIds.length > 0
-    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, tipologia, evento_id').in('id', percorsoIds)
+    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
     : { data: [] }
 
   const eventoIds = [...new Set((percorsi ?? []).map((p: any) => p.evento_id))]
@@ -128,7 +119,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           luogo: r.evento.luogo ?? '',
           url: r.evento.url ?? null,
           percorso: r.percorso?.nome_percorso ?? '',
-          tipologia: r.percorso?.tipologia ?? '',
+          tipologia: '',
           km: r.percorso?.km ?? 0,
           dislivello_m: r.percorso?.dislivello_m ?? 0,
           completato: r.completato,
