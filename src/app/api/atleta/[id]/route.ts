@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // 2. Tutti gli eventi dell'anno — solo id e data per il calcolo punti
   const { data: eventiAnno } = await supabase
     .from('eventi')
-    .select('id, data_evento')
+    .select('id, nome, data_evento')
     .gte('data_evento', inizioAnno)
 
   const eventoIdSet = new Set((eventiAnno ?? []).map((e: any) => e.id))
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (canSeeEvents && eventoIds.length > 0) {
     const { data: evDettagli } = await supabase
       .from('eventi')
-      .select('id, nome, data_evento, luogo, url')
+      .select('*')
       .in('id', eventoIds)
     for (const e of evDettagli ?? []) eventoMap[e.id] = e
   }
