@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { isAdmin } from '@/lib/is-admin'
 
 function ultimaDomenicaOttobre(anno: number): Date {
   const d = new Date(anno, 9, 31)
@@ -13,11 +14,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const { data: { user } } = await supabase.auth.getUser()
   const atletaIdCorrente = user?.user_metadata?.atleta_id ?? null
   const isMe = atletaIdCorrente === params.id
+  const canSeeEvents = isMe || isAdmin(user)
 
   const anno = new Date().getFullYear()
   const inizioAnno = `${anno}-01-01`
 
-  // Dati atleta
   const { data: atleta } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente, numero_tessera')
@@ -26,7 +27,6 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
-  // Registrazioni dell'anno corrente per punti e posizione
   const { data: regs } = await supabase
     .from('registrazioni')
     .select(`
@@ -41,7 +41,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         eventi (
           nome,
           data_evento,
-          luogo
+          luogo,
+          url
         )
       )
     `)
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return acc
   }, 0)
 
-  // Posizione in classifica (atleti della stessa categoria con più punti)
+  // Posizione in classifica
   const { data: tuttiAtleti } = await supabase
     .from('atleti')
     .select(`id, registrazioni(punti, percorsi(eventi(data_evento)))`)
@@ -74,14 +75,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const finisher = puntiTotali >= sogliaFinisher
   const progressione = Math.min(100, Math.round((puntiTotali / sogliaFinisher) * 100))
 
-  // Storico eventi: solo se è l'utente stesso
-  const eventi = isMe
+  const eventi = canSeeEvents
     ? (regs ?? [])
         .filter((r: any) => r.percorsi?.eventi?.data_evento)
         .map((r: any) => ({
           data: r.percorsi.eventi.data_evento,
           nome: r.percorsi.eventi.nome,
           luogo: r.percorsi.eventi.luogo ?? '',
+          url: r.percorsi.eventi.url ?? null,
           percorso: r.percorsi.nome_percorso,
           tipologia: r.percorsi.tipologia ?? '',
           km: r.percorsi.km,
@@ -105,6 +106,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     progressione,
     sogliaFinisher,
     isMe,
+    canSeeEvents,
     eventi,
   })
 }

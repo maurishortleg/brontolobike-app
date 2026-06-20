@@ -74,6 +74,7 @@ export default function RegistraClient({
   const [completato, setCompletato] = useState(true)
   const [kmEffettivi, setKmEffettivi] = useState('')
   const [dislivelloEff, setDislivelloEff] = useState('')
+  const [urlEvento, setUrlEvento] = useState('')
   const [loading, setLoading] = useState(false)
   const [errore, setErrore] = useState('')
   const [successo, setSuccesso] = useState<number | null>(null)
@@ -155,6 +156,7 @@ export default function RegistraClient({
     setMostraSuggerimenti(false)
     setNomeEvento(ev.nome)
     if (ev.data) setDataEvento(ev.data)
+    setUrlEvento(ev.url ?? '')
 
     const tipologiaEventoId = trovaTipologiaId(ev.tipologia)
 
@@ -261,6 +263,7 @@ export default function RegistraClient({
     setErroreRicerca('')
     setDataFiltro('')
     setEventiDelGiorno([])
+    setUrlEvento('')
     setFase('cerca')
   }
 
@@ -284,7 +287,7 @@ export default function RegistraClient({
 
     const { data: evento, error: errEvento } = await supabase
       .from('eventi')
-      .insert({ nome: nomeEvento.trim(), data_evento: dataEvento, stagione_id })
+      .insert({ nome: nomeEvento.trim(), data_evento: dataEvento, stagione_id, url: urlEvento || null })
       .select('id')
       .single()
     if (errEvento) { setErrore('Errore nel salvataggio evento.'); setLoading(false); return }

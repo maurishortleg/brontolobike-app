@@ -8,6 +8,7 @@ type EventoPersonale = {
   data: string
   nome: string
   luogo: string
+  url: string | null
   percorso: string
   tipologia: string
   km: number
@@ -76,6 +77,16 @@ export default function MieiEventiClient() {
                       <span className="inline-block mt-1 text-xs text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-full px-2 py-0.5">
                         parziale · {e.km_effettivi} km
                       </span>
+                    )}
+                    {e.url && (
+                      <a
+                        href={e.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-1 text-xs text-blue-500 hover:underline"
+                      >
+                        LINK ↗
+                      </a>
                     )}
                   </div>
                   <div className="text-right shrink-0">

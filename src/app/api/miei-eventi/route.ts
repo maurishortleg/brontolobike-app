@@ -23,7 +23,8 @@ export async function GET() {
         eventi (
           nome,
           data_evento,
-          luogo
+          luogo,
+          url
         )
       )
     `)
@@ -35,6 +36,7 @@ export async function GET() {
     data: r.percorsi?.eventi?.data_evento ?? '',
     nome: r.percorsi?.eventi?.nome ?? '',
     luogo: r.percorsi?.eventi?.luogo ?? '',
+    url: r.percorsi?.eventi?.url ?? null,
     percorso: r.percorsi?.nome_percorso ?? '',
     tipologia: r.percorsi?.tipologia ?? '',
     km: r.percorsi?.km ?? 0,

@@ -7,6 +7,7 @@ type Evento = {
   data: string
   nome: string
   luogo: string
+  url: string | null
   percorso: string
   tipologia: string
   km: number
@@ -24,6 +25,7 @@ type Scheda = {
   progressione: number
   sogliaFinisher: number
   isMe: boolean
+  canSeeEvents: boolean
   eventi: Evento[] | null
 }
 
@@ -52,7 +54,7 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
     </div>
   )
 
-  const { atleta, puntiTotali, posizione, finisher, progressione, sogliaFinisher, isMe, eventi } = scheda
+  const { atleta, puntiTotali, posizione, finisher, progressione, sogliaFinisher, isMe, canSeeEvents, eventi } = scheda
   const anno = new Date().getFullYear()
   const categoriaLabel = atleta.categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'
 
@@ -120,11 +122,11 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
           )}
         </div>
 
-        {/* Storico eventi — solo per l'atleta stesso */}
-        {isMe && eventi && (
+        {/* Storico eventi — visibile all'atleta e all'admin */}
+        {canSeeEvents && eventi && (
           <div>
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              I tuoi eventi ({eventi.length})
+              {isMe ? 'I tuoi eventi' : 'Eventi'} ({eventi.length})
             </h2>
             {eventi.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm">
@@ -155,6 +157,16 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
                             parziale · {e.km_effettivi} km
                           </span>
                         )}
+                        {e.url && (
+                          <a
+                            href={e.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block mt-1 text-xs text-blue-500 hover:underline"
+                          >
+                            LINK ↗
+                          </a>
+                        )}
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-bold text-orange-500 text-lg">{e.punti}</div>
@@ -168,8 +180,8 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
           </div>
         )}
 
-        {/* Messaggio se stai vedendo la scheda di un altro atleta */}
-        {!isMe && (
+        {/* Messaggio se stai vedendo la scheda di un altro atleta senza permessi */}
+        {!canSeeEvents && (
           <div className="text-center text-xs text-gray-400 mt-4">
             Lo storico eventi è visibile solo all'atleta stesso.
           </div>
