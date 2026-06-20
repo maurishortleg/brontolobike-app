@@ -40,6 +40,7 @@ export type PercorsoTrovato = {
 export type EventoTrovato = {
   nome: string
   data: string | null
+  data_fine: string | null
   luogo: string | null
   tipologia: string | null
   url: string
@@ -48,6 +49,14 @@ export type EventoTrovato = {
 
 function dominioUrl(url: string): string {
   try { return new URL(url).hostname.replace('www.', '') } catch { return '' }
+}
+
+function correggiRandonnee(tipologia: string | null, km: number | null): string | null {
+  if (!tipologia) return tipologia
+  const isRandonnee = tipologia.toLowerCase().includes('randonn')
+  if (!isRandonnee) return tipologia
+  if (km == null) return tipologia
+  return km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
 }
 
 export async function POST(req: NextRequest) {
@@ -113,7 +122,8 @@ export async function POST(req: NextRequest) {
 
 Per ogni evento trovato, crea un oggetto con:
 - nome: nome completo dell'evento (stringa)
-- data: data in formato YYYY-MM-DD se trovata, altrimenti null. Considera solo date del ${anno}.
+- data: data di inizio in formato YYYY-MM-DD se trovata, altrimenti null. Considera solo date del ${anno}.
+- data_fine: data di fine in formato YYYY-MM-DD per eventi multi-giorno (es. Randonnée, Trail, stage race), altrimenti null
 - luogo: città o paese di partenza/svolgimento dell'evento (es. "Varese", "Pinarello di Noale"), null se non trovato
 - tipologia: tipologia prevalente dell'evento, scelta da questa lista: ${tipologieStr} — oppure null
 - url: URL del sito più autorevole (preferisci il sito ufficiale dell'evento, poi siti specializzati)
@@ -162,9 +172,11 @@ ${textResults}`
     let parsed = JSON.parse(cleaned) as EventoTrovato[]
     if (!Array.isArray(parsed)) return Response.json({ risultati: [] })
 
-    // Forza tipologia "Gravel di GRAvelAND" per eventi da gravelland.it
+    // Correggi tipologie per regole speciali
     parsed = parsed.map((ev) => {
       const dominio = dominioUrl(ev.url)
+
+      // Regola GRAvelAND
       if (dominio === 'gravelland.it') {
         return {
           ...ev,
@@ -175,7 +187,20 @@ ${textResults}`
           })),
         }
       }
-      return ev
+
+      // Regola Randonnée: etichetta in base ai km del percorso
+      const percorsiCorrotti = ev.percorsi.map((p) => ({
+        ...p,
+        tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km),
+      }))
+
+      // Tipologia evento = quella del percorso principale (il più lungo)
+      const kmMax = percorsiCorrotti.length > 0
+        ? Math.max(...percorsiCorrotti.map((p) => p.km ?? 0))
+        : null
+      const tipologiaEvento = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
+
+      return { ...ev, tipologia: tipologiaEvento, percorsi: percorsiCorrotti }
     })
 
     risultati = parsed
@@ -200,6 +225,7 @@ ${textResults}`
           await supabase.from('eventi_ricercati').insert({
             nome: ev.nome,
             data: ev.data,
+            data_fine: ev.data_fine ?? null,
             luogo: ev.luogo,
             tipologia: ev.tipologia,
             url: ev.url,
@@ -214,6 +240,7 @@ ${textResults}`
             .single()
           await supabase.from('eventi_ricercati').update({
             data: ev.data,
+            data_fine: ev.data_fine ?? null,
             luogo: ev.luogo,
             tipologia: ev.tipologia,
             url: ev.url,

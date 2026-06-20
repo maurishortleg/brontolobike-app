@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createSupabaseBrowserClient } from '@/lib/supabase-browser'
 import { calcolaPunteggio } from '@/lib/punteggio'
 import { useRouter } from 'next/navigation'
+import Calendario from './Calendario'
 
 type Tipologia = {
   id: number
@@ -30,6 +31,7 @@ type PercorsoTrovato = {
 type EventoTrovato = {
   nome: string
   data: string | null
+  data_fine: string | null
   luogo: string | null
   tipologia: string | null
   url: string
@@ -56,6 +58,9 @@ export default function RegistraClient({
   const [suggerimenti, setSuggerimenti] = useState<EventoTrovato[]>([])
   const [mostraSuggerimenti, setMostraSuggerimenti] = useState(false)
   const [erroreRicerca, setErroreRicerca] = useState('')
+  const [dataFiltro, setDataFiltro] = useState<string>('')
+  const [eventiDelGiorno, setEventiDelGiorno] = useState<EventoTrovato[]>([])
+  const [loadingGiorno, setLoadingGiorno] = useState(false)
   const autocompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // --- Form state ---
@@ -132,11 +137,17 @@ export default function RegistraClient({
     }
   }
 
-  function trovaTipologiaId(nomeTipologia: string | null): number | '' {
-    if (!nomeTipologia) return ''
-    const match = tipologie.find(
-      (t) => t.nome.toLowerCase() === nomeTipologia.toLowerCase()
-    )
+  function correggiRandonnee(tipologia: string | null, km: number | null): string | null {
+    if (!tipologia) return tipologia
+    if (!tipologia.toLowerCase().includes('randonn')) return tipologia
+    if (km == null) return tipologia
+    return km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
+  }
+
+  function trovaTipologiaId(nomeTipologia: string | null, km?: number | null): number | '' {
+    const nome = correggiRandonnee(nomeTipologia, km ?? null)
+    if (!nome) return ''
+    const match = tipologie.find((t) => t.nome.toLowerCase() === nome.toLowerCase())
     return match ? match.id : ''
   }
 
@@ -150,7 +161,7 @@ export default function RegistraClient({
     const percorsiPrecompilati: Percorso[] = ev.percorsi?.length > 0
       ? ev.percorsi.map((p) => ({
           nome_percorso: p.nome,
-          tipologia_id: trovaTipologiaId(p.tipologia) || tipologiaEventoId,
+          tipologia_id: trovaTipologiaId(p.tipologia ?? ev.tipologia, p.km) || tipologiaEventoId,
           km: String(p.km),
           dislivello_m: p.dislivello != null ? String(p.dislivello) : '',
         }))
@@ -162,7 +173,7 @@ export default function RegistraClient({
     if (percorsoScelto) {
       const soloPercorso: Percorso = {
         nome_percorso: percorsoScelto.nome,
-        tipologia_id: trovaTipologiaId(percorsoScelto.tipologia) || tipologiaEventoId,
+        tipologia_id: trovaTipologiaId(percorsoScelto.tipologia ?? ev.tipologia, percorsoScelto.km) || tipologiaEventoId,
         km: String(percorsoScelto.km),
         dislivello_m: percorsoScelto.dislivello != null ? String(percorsoScelto.dislivello) : '',
       }
@@ -215,6 +226,26 @@ export default function RegistraClient({
     return calcolaPunteggio(tip, km, dislivello)
   }
 
+  async function onDataCalendario(data: string) {
+    setDataFiltro(data)
+    setRisultatiRicerca([])
+    setErroreRicerca('')
+    if (!data) { setEventiDelGiorno([]); return }
+    setLoadingGiorno(true)
+    try {
+      const res = await fetch(`/api/eventi-per-data?data=${data}`)
+      const d = await res.json()
+      setEventiDelGiorno(d.risultati ?? [])
+      if ((d.risultati ?? []).length === 0) {
+        setErroreRicerca(`Nessun evento trovato per il ${new Date(data + 'T12:00:00').toLocaleDateString('it-IT')}. Cerca per nome o inserisci manualmente.`)
+      }
+    } catch {
+      setEventiDelGiorno([])
+    } finally {
+      setLoadingGiorno(false)
+    }
+  }
+
   function resetForm() {
     setSuccesso(null)
     setNomeEvento('')
@@ -228,6 +259,8 @@ export default function RegistraClient({
     setRisultatiRicerca([])
     setSuggerimenti([])
     setErroreRicerca('')
+    setDataFiltro('')
+    setEventiDelGiorno([])
     setFase('cerca')
   }
 
@@ -310,15 +343,23 @@ export default function RegistraClient({
 
   // --- Search phase ---
   if (fase === 'cerca') {
-    const listaVisibile = risultatiRicerca.length > 0 ? risultatiRicerca : []
+    const listaVisibile = dataFiltro
+      ? eventiDelGiorno
+      : risultatiRicerca
 
     return (
       <div className="min-h-screen bg-gray-50 py-10 px-4">
         <div className="max-w-lg mx-auto bg-white rounded-2xl shadow p-6">
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Registra evento</h1>
-          <p className="text-sm text-gray-500 mb-6">
-            Cerca l&apos;evento per compilare i dati automaticamente
+          <p className="text-sm text-gray-500 mb-4">
+            Cerca per nome o seleziona una data nel calendario
           </p>
+
+          {/* Calendario */}
+          <Calendario
+            onDataSelezionata={onDataCalendario}
+            dataSelezionata={dataFiltro}
+          />
 
           {/* Search bar con autocomplete */}
           <div className="relative mb-4">
@@ -395,10 +436,10 @@ export default function RegistraClient({
             )}
           </div>
 
-          {/* Loading indicator */}
-          {loadingRicerca && (
+          {/* Loading indicators */}
+          {(loadingRicerca || loadingGiorno) && (
             <div className="text-center py-6 text-gray-400 text-sm">
-              Ricerca in corso con AI...
+              {loadingRicerca ? 'Ricerca in corso con AI...' : 'Caricamento eventi...'}
             </div>
           )}
 
@@ -423,9 +464,20 @@ export default function RegistraClient({
                   >
                     <div className="font-semibold text-gray-900 mb-0.5 leading-tight">{ev.nome}</div>
                     <div className="text-sm text-gray-700 flex flex-wrap gap-3 mb-3">
-                      {ev.data && <span>{new Date(ev.data).toLocaleDateString('it-IT')}</span>}
+                      {ev.data && (
+                        <span>
+                          {new Date(ev.data + 'T12:00:00').toLocaleDateString('it-IT')}
+                          {ev.data_fine && ` → ${new Date(ev.data_fine + 'T12:00:00').toLocaleDateString('it-IT')}`}
+                        </span>
+                      )}
                       {ev.luogo && <span>📍 {ev.luogo}</span>}
-                      {ev.tipologia && <span className="text-orange-500 font-medium">{ev.tipologia}</span>}
+                      {(() => {
+                        // Non mostrare la tipologia se i percorsi hanno etichette Randonnée miste
+                        const tipPercorsi = [...new Set(ev.percorsi?.map((p) => correggiRandonnee(p.tipologia ?? ev.tipologia, p.km)).filter(Boolean))]
+                        const hasMixedRandonnee = tipPercorsi.filter((t) => t?.toLowerCase().includes('randonn')).length > 1
+                        if (hasMixedRandonnee) return null
+                        return ev.tipologia ? <span className="text-orange-500 font-medium">{ev.tipologia}</span> : null
+                      })()}
                     </div>
 
                     {ev.percorsi?.length > 0 ? (

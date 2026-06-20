@@ -23,6 +23,13 @@ export default async function HomePage() {
             Registra evento
           </Link>
 
+          <Link
+            href="/calendario"
+            className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors"
+          >
+            Calendario club
+          </Link>
+
           {user ? (
             <>
               {!atletaId && (
