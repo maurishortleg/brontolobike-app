@@ -59,8 +59,7 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json()
   if (!id) return Response.json({ error: 'ID mancante' }, { status: 400 })
 
-  const admin = createSupabaseAdminClient()
-  const { error } = await admin.from('registrazioni').delete().eq('id', id)
+  const { error } = await supabase.from('registrazioni').delete().eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })

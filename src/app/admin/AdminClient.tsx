@@ -95,7 +95,12 @@ export default function AdminClient() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    if (r.ok) setRegs((prev) => prev.filter((x) => x.id !== id))
+    if (r.ok) {
+      setRegs((prev) => prev.filter((x) => x.id !== id))
+    } else {
+      const d = await r.json().catch(() => ({}))
+      alert('Errore cancellazione: ' + (d.error ?? r.status))
+    }
   }
 
   async function salvaPunti(id: string) {

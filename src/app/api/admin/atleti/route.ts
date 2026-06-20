@@ -34,8 +34,7 @@ export async function PATCH(req: NextRequest) {
     if (key in fields) update[key] = fields[key]
   }
 
-  const admin = createSupabaseAdminClient()
-  const { error } = await admin.from('atleti').update(update).eq('id', id)
+  const { error } = await supabase.from('atleti').update(update).eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })
