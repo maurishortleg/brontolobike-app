@@ -135,7 +135,9 @@ export default function ClassificaClient() {
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 truncate">{a.nome}</div>
+                  <Link href={`/atleta/${a.id}`} className="font-medium text-gray-900 hover:text-orange-500 truncate block">
+                    {a.nome}
+                  </Link>
                   {a.finisher && (
                     <span className="text-xs text-orange-600 font-semibold">FINISHER</span>
                   )}

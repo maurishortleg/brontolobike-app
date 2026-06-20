@@ -46,6 +46,14 @@ export default async function HomePage() {
 
           {user ? (
             <>
+              {atletaId && (
+                <Link
+                  href={`/atleta/${atletaId}`}
+                  className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors"
+                >
+                  La mia scheda
+                </Link>
+              )}
               {!atletaId && (
                 <Link
                   href="/collega-profilo"
