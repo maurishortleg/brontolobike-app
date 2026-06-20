@@ -11,36 +11,40 @@ export async function GET(req: NextRequest) {
   const atletaId = req.nextUrl.searchParams.get('atleta_id')
   if (!atletaId) return Response.json({ registrazioni: [] })
 
-  const { data } = await supabase
+  const { data: regs } = await supabase
     .from('registrazioni')
-    .select(`
-      id,
-      completato,
-      km_effettivi,
-      dislivello_eff,
-      punti,
-      percorsi (
-        nome_percorso,
-        km,
-        dislivello_m,
-        tipologia,
-        eventi ( nome, data_evento )
-      )
-    `)
+    .select('id, completato, km_effettivi, punti, percorso_id')
     .eq('atleta_id', atletaId)
     .order('created_at', { ascending: false })
 
-  const registrazioni = (data ?? []).map((r: any) => ({
-    id: r.id,
-    evento: r.percorsi?.eventi?.nome ?? '',
-    data: r.percorsi?.eventi?.data_evento ?? '',
-    percorso: r.percorsi?.nome_percorso ?? '',
-    km: r.percorsi?.km ?? 0,
-    dislivello_m: r.percorsi?.dislivello_m ?? 0,
-    completato: r.completato,
-    km_effettivi: r.km_effettivi,
-    punti: r.punti ?? 0,
-  }))
+  const percorsoIds = (regs ?? []).map((r: any) => r.percorso_id)
+  const { data: percorsi } = percorsoIds.length > 0
+    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
+    : { data: [] }
+
+  const eventoIds = [...new Set((percorsi ?? []).map((p: any) => p.evento_id))]
+  const { data: eventi_db } = eventoIds.length > 0
+    ? await supabase.from('eventi').select('id, nome, data_evento').in('id', eventoIds)
+    : { data: [] }
+
+  const percorsoMap = Object.fromEntries((percorsi ?? []).map((p: any) => [p.id, p]))
+  const eventoMap = Object.fromEntries((eventi_db ?? []).map((e: any) => [e.id, e]))
+
+  const registrazioni = (regs ?? []).map((r: any) => {
+    const p = percorsoMap[r.percorso_id]
+    const e = p ? eventoMap[p.evento_id] : null
+    return {
+      id: r.id,
+      evento: e?.nome ?? '',
+      data: e?.data_evento ?? '',
+      percorso: p?.nome_percorso ?? '',
+      km: p?.km ?? 0,
+      dislivello_m: p?.dislivello_m ?? 0,
+      completato: r.completato,
+      km_effettivi: r.km_effettivi,
+      punti: r.punti ?? 0,
+    }
+  })
 
   return Response.json({ registrazioni })
 }
