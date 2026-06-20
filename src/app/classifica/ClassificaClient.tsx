@@ -7,7 +7,6 @@ type AtletaClassifica = {
   id: string
   nome: string
   punti: number
-  puntiEntroScadenza: number
   finisher: boolean
 }
 
@@ -19,7 +18,7 @@ type Campione = {
 } | null
 
 export default function ClassificaClient() {
-  const [categoria, setCategoria] = useState<'Amatori' | 'Cicloturisti'>('Amatori')
+  const [categoria, setCategoria] = useState<'AMATORI' | 'CICLOTURISTI'>('AMATORI')
   const [classifica, setClassifica] = useState<AtletaClassifica[]>([])
   const [campione, setCampione] = useState<Campione>(null)
   const [scadenza, setScadenza] = useState<string>('')
@@ -42,11 +41,13 @@ export default function ClassificaClient() {
   }, [categoria])
 
   const anno = new Date().getFullYear()
-  const sogliaFinisher = categoria === 'Amatori' ? 9000 : 4000
+  const sogliaFinisher = categoria === 'AMATORI' ? 9000 : 4000
 
   const scadenzaFormattata = scadenza
     ? new Date(scadenza + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })
     : ''
+
+  const finishers = classifica.filter((a) => a.finisher)
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
@@ -56,27 +57,47 @@ export default function ClassificaClient() {
           <h1 className="text-2xl font-bold text-gray-800">Classifica {anno}</h1>
         </div>
 
-        {/* Campione Sociale */}
+        {/* Campione Sociale — solo dopo l'ultima domenica di ottobre */}
         {campione && (
           <div className="bg-orange-500 text-white rounded-2xl p-4 mb-6 flex items-center gap-3">
             <span className="text-3xl">🏆</span>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide opacity-80">Campione Sociale {anno}</div>
               <div className="font-bold text-lg">{campione.nome}</div>
-              <div className="text-sm opacity-90">{campione.punti} pt · {campione.categoria}</div>
+              <div className="text-sm opacity-90">
+                {campione.punti.toLocaleString('it-IT')} pt · {campione.categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'}
+              </div>
             </div>
           </div>
         )}
 
+        {/* Banner Finisher — durante la stagione */}
+        {!campione && finishers.length > 0 && (
+          <div className="bg-white border border-orange-300 rounded-2xl p-4 mb-6">
+            <div className="text-xs font-semibold uppercase tracking-wide text-orange-500 mb-2">
+              Finisher {anno} — {categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'}
+            </div>
+            <div className="flex flex-col gap-1">
+              {finishers.map((a) => (
+                <div key={a.id} className="flex justify-between text-sm">
+                  <span className="font-medium text-gray-800">{a.nome}</span>
+                  <span className="font-bold text-orange-500">{a.punti.toLocaleString('it-IT')} pt</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Info scadenza campione */}
         {!campione && scadenzaFormattata && (
-          <div className="bg-white border border-gray-200 rounded-xl p-3 mb-6 text-sm text-gray-500 text-center">
-            Il Campione Sociale sarà determinato al {scadenzaFormattata}
+          <div className="text-xs text-gray-400 text-center mb-4">
+            Campione Sociale determinato al {scadenzaFormattata}
           </div>
         )}
 
         {/* Tab categorie */}
         <div className="flex bg-white border border-gray-200 rounded-xl p-1 mb-4">
-          {(['Amatori', 'Cicloturisti'] as const).map((cat) => (
+          {(['AMATORI', 'CICLOTURISTI'] as const).map((cat) => (
             <button
               key={cat}
               onClick={() => setCategoria(cat)}
@@ -86,7 +107,7 @@ export default function ClassificaClient() {
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              {cat}
+              {cat === 'AMATORI' ? 'Amatori' : 'Cicloturisti'}
             </button>
           ))}
         </div>
@@ -110,7 +131,7 @@ export default function ClassificaClient() {
                   a.finisher ? 'border-orange-300' : 'border-gray-200'
                 }`}
               >
-                <span className={`text-sm font-bold w-6 text-right ${i === 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                <span className={`text-sm font-bold w-6 text-right shrink-0 ${i === 0 && a.punti > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
                   {i + 1}
                 </span>
                 <div className="flex-1 min-w-0">
@@ -119,7 +140,7 @@ export default function ClassificaClient() {
                     <span className="text-xs text-orange-600 font-semibold">FINISHER</span>
                   )}
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <div className="font-bold text-gray-900">{a.punti.toLocaleString('it-IT')}</div>
                   <div className="text-xs text-gray-400">pt</div>
                 </div>
