@@ -30,6 +30,20 @@ export default async function HomePage() {
             Il mio calendario
           </Link>
 
+          <Link
+            href="/miei-eventi"
+            className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors"
+          >
+            I miei eventi
+          </Link>
+
+          <Link
+            href="/classifica"
+            className="w-full border border-gray-300 text-gray-700 hover:bg-gray-50 font-semibold py-3 rounded-lg transition-colors"
+          >
+            Classifica
+          </Link>
+
           {user ? (
             <>
               {!atletaId && (
