@@ -24,6 +24,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
+  // DEBUG temporaneo
+  if (req.nextUrl.searchParams.get('debug') === '1') {
+    const { data: regsDbg } = await supabase.from('registrazioni').select('*').eq('atleta_id', id)
+    const pIds = (regsDbg ?? []).map((r: any) => r.percorso_id)
+    const { data: percDbg } = pIds.length > 0 ? await supabase.from('percorsi').select('*').in('id', pIds) : { data: [] }
+    const eIds = [...new Set((percDbg ?? []).map((p: any) => p.evento_id))]
+    const { data: evDbg } = eIds.length > 0 ? await supabase.from('eventi').select('*').in('id', eIds) : { data: [] }
+    return Response.json({ atleta, regs: regsDbg, percorsi: percDbg, eventi: evDbg })
+  }
+
   // 2. Registrazioni dell'atleta (query semplice senza join annidati)
   const { data: regs } = await supabase
     .from('registrazioni')
