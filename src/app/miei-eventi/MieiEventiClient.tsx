@@ -58,9 +58,9 @@ export default function MieiEventiClient() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-gray-400 mb-0.5">
-                      {new Date(e.data + 'T12:00:00').toLocaleDateString('it-IT', {
+                      {e.data ? new Date(e.data + 'T12:00:00').toLocaleDateString('it-IT', {
                         weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-                      })}
+                      }) : '—'}
                       {e.luogo ? ` · ${e.luogo}` : ''}
                     </div>
                     <div className="font-semibold text-gray-900 truncate">{e.nome}</div>
