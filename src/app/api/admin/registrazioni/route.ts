@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { isAdmin } from '@/lib/is-admin'
 
 // GET /api/admin/registrazioni?atleta_id=xxx
@@ -11,7 +12,9 @@ export async function GET(req: NextRequest) {
   const atletaId = req.nextUrl.searchParams.get('atleta_id')
   if (!atletaId) return Response.json({ registrazioni: [] })
 
-  const { data: regs } = await supabase
+  const admin = createSupabaseAdminClient()
+
+  const { data: regs } = await admin
     .from('registrazioni')
     .select('id, completato, km_effettivi, punti, percorso_id')
     .eq('atleta_id', atletaId)
@@ -19,12 +22,12 @@ export async function GET(req: NextRequest) {
 
   const percorsoIds = (regs ?? []).map((r: any) => r.percorso_id)
   const { data: percorsi } = percorsoIds.length > 0
-    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
+    ? await admin.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
     : { data: [] }
 
   const eventoIds = [...new Set((percorsi ?? []).map((p: any) => p.evento_id))]
   const { data: eventi_db } = eventoIds.length > 0
-    ? await supabase.from('eventi').select('id, nome, data_evento').in('id', eventoIds)
+    ? await admin.from('eventi').select('id, nome, data_evento').in('id', eventoIds)
     : { data: [] }
 
   const percorsoMap = Object.fromEntries((percorsi ?? []).map((p: any) => [p.id, p]))
@@ -58,7 +61,8 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json()
   if (!id) return Response.json({ error: 'ID mancante' }, { status: 400 })
 
-  const { error } = await supabase.from('registrazioni').delete().eq('id', id)
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from('registrazioni').delete().eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })
@@ -78,7 +82,8 @@ export async function PATCH(req: NextRequest) {
   if (completato !== undefined) update.completato = completato
   if (km_effettivi !== undefined) update.km_effettivi = Number(km_effettivi)
 
-  const { error } = await supabase.from('registrazioni').update(update).eq('id', id)
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from('registrazioni').update(update).eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })
