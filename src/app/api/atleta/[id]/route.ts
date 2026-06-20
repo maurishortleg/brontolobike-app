@@ -21,48 +21,40 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .limit(1)
 
   const atleta = atletaList?.[0] ?? null
-
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
+  // 2. Tutti gli eventi dell'anno (una volta sola)
+  const { data: eventiAnno } = await supabase
+    .from('eventi')
+    .select('id, nome, data_evento, luogo, url')
+    .gte('data_evento', inizioAnno)
 
-  // 2. Registrazioni dell'atleta (query semplice senza join annidati)
+  const eventoIdSet = new Set((eventiAnno ?? []).map((e: any) => e.id))
+  const eventoMap = Object.fromEntries((eventiAnno ?? []).map((e: any) => [e.id, e]))
+
+  // 3. Tutti i percorsi collegati a eventi dell'anno
+  const eventoIds = [...eventoIdSet]
+  const { data: percorsiAnno } = eventoIds.length > 0
+    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('evento_id', eventoIds)
+    : { data: [] }
+
+  const percorsoMap = Object.fromEntries((percorsiAnno ?? []).map((p: any) => [p.id, p]))
+  const percorsoIdSet = new Set(Object.keys(percorsoMap))
+
+  // 4. Registrazioni dell'atleta
   const { data: regs } = await supabase
     .from('registrazioni')
     .select('id, completato, km_effettivi, punti, percorso_id')
     .eq('atleta_id', id)
+    .order('created_at', { ascending: false })
 
-  const percorsoIds = (regs ?? []).map((r: any) => r.percorso_id)
-
-  // 3. Percorsi
-  const { data: percorsi } = percorsoIds.length > 0
-    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
-    : { data: [] }
-
-  const eventoIds = [...new Set((percorsi ?? []).map((p: any) => p.evento_id))]
-
-  // 4. Eventi
-  const { data: eventi_db } = eventoIds.length > 0
-    ? await supabase.from('eventi').select('id, nome, data_evento, luogo, url').in('id', eventoIds)
-    : { data: [] }
-
-  // Mappe per lookup rapido
-  const percorsoMap = Object.fromEntries((percorsi ?? []).map((p: any) => [p.id, p]))
-  const eventoMap = Object.fromEntries((eventi_db ?? []).map((e: any) => [e.id, e]))
-
-  // 5. Componi registrazioni complete
-  const regsComplete = (regs ?? []).map((r: any) => {
-    const p = percorsoMap[r.percorso_id]
-    const e = p ? eventoMap[p.evento_id] : null
-    return { ...r, percorso: p, evento: e }
-  })
-
-  // 6. Punti anno corrente
-  const puntiTotali = regsComplete.reduce((acc, r) => {
-    if (r.evento?.data_evento >= inizioAnno) return acc + (r.punti ?? 0)
+  // 5. Punti anno corrente
+  const puntiTotali = (regs ?? []).reduce((acc, r: any) => {
+    if (percorsoIdSet.has(String(r.percorso_id))) return acc + (r.punti ?? 0)
     return acc
   }, 0)
 
-  // 7. Posizione in classifica
+  // 6. Posizione: una sola query per tutte le registrazioni della categoria dell'anno
   const { data: atletiCategoria } = await supabase
     .from('atleti')
     .select('id')
@@ -70,62 +62,52 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq('attivo', true)
     .neq('id', id)
 
-  let posizione = 1
-  for (const a of atletiCategoria ?? []) {
-    const { data: regsAltro } = await supabase
-      .from('registrazioni')
-      .select('punti, percorso_id')
-      .eq('atleta_id', a.id)
+  const altriIds = (atletiCategoria ?? []).map((a: any) => a.id)
 
-    const pIds = (regsAltro ?? []).map((r: any) => r.percorso_id)
-    if (pIds.length === 0) continue
+  const { data: regsAltri } = altriIds.length > 0
+    ? await supabase
+        .from('registrazioni')
+        .select('atleta_id, punti, percorso_id')
+        .in('atleta_id', altriIds)
+    : { data: [] }
 
-    const { data: pAltro } = await supabase
-      .from('percorsi')
-      .select('id, evento_id')
-      .in('id', pIds)
-
-    const eIds = [...new Set((pAltro ?? []).map((p: any) => p.evento_id))]
-    if (eIds.length === 0) continue
-
-    const { data: eAltro } = await supabase
-      .from('eventi')
-      .select('id, data_evento')
-      .in('id', eIds)
-      .gte('data_evento', inizioAnno)
-
-    const eIdSet = new Set((eAltro ?? []).map((e: any) => e.id))
-    const pIdSet = new Set((pAltro ?? []).filter((p: any) => eIdSet.has(p.evento_id)).map((p: any) => p.id))
-
-    const puntiAltro = (regsAltro ?? []).reduce((acc: number, r: any) => {
-      return pIdSet.has(r.percorso_id) ? acc + (r.punti ?? 0) : acc
-    }, 0)
-
-    if (puntiAltro > puntiTotali) posizione++
+  // Somma punti per atleta (solo percorsi di eventi dell'anno)
+  const puntiAltri: Record<string, number> = {}
+  for (const r of regsAltri ?? []) {
+    if (!percorsoIdSet.has(String(r.percorso_id))) continue
+    const aid = r.atleta_id as string
+    puntiAltri[aid] = (puntiAltri[aid] ?? 0) + (r.punti ?? 0)
   }
+
+  const posizione = 1 + Object.values(puntiAltri).filter((p) => p > puntiTotali).length
 
   const sogliaFinisher = atleta.categoria_corrente === 'AMATORI' ? 9000 : 4000
   const finisher = puntiTotali >= sogliaFinisher
   const progressione = Math.min(100, Math.round((puntiTotali / sogliaFinisher) * 100))
 
-  // 8. Storico eventi
+  // 7. Storico eventi (solo atleta o admin)
   const storicoEventi = canSeeEvents
-    ? regsComplete
-        .filter((r) => r.evento?.data_evento)
-        .sort((a, b) => b.evento.data_evento.localeCompare(a.evento.data_evento))
-        .map((r) => ({
-          data: r.evento.data_evento,
-          nome: r.evento.nome,
-          luogo: r.evento.luogo ?? '',
-          url: r.evento.url ?? null,
-          percorso: r.percorso?.nome_percorso ?? '',
-          tipologia: '',
-          km: r.percorso?.km ?? 0,
-          dislivello_m: r.percorso?.dislivello_m ?? 0,
-          completato: r.completato,
-          km_effettivi: r.km_effettivi,
-          punti: r.punti ?? 0,
-        }))
+    ? (regs ?? [])
+        .map((r: any) => {
+          const p = percorsoMap[r.percorso_id]
+          const e = p ? eventoMap[p.evento_id] : null
+          if (!e) return null
+          return {
+            data: e.data_evento,
+            nome: e.nome,
+            luogo: e.luogo ?? '',
+            url: e.url ?? null,
+            percorso: p.nome_percorso ?? '',
+            tipologia: '',
+            km: p.km ?? 0,
+            dislivello_m: p.dislivello_m ?? 0,
+            completato: r.completato,
+            km_effettivi: r.km_effettivi,
+            punti: r.punti ?? 0,
+          }
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => b.data.localeCompare(a.data))
     : null
 
   return Response.json({
