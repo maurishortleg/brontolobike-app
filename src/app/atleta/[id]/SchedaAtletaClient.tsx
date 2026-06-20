@@ -19,7 +19,7 @@ type Evento = {
 }
 
 type Scheda = {
-  atleta: { id: string; nome: string; categoria: string; numero_tessera: string | null }
+  atleta: { id: string; nome: string; categoria: string; numero_tessera: string | null; data_nascita: string | null }
   puntiTotali: number
   posizione: number
   finisher: boolean
@@ -72,6 +72,11 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
                 {categoriaLabel}
                 {atleta.numero_tessera && (
                   <span className="ml-2 text-gray-400">· Tessera {atleta.numero_tessera}</span>
+                )}
+                {isMe && atleta.data_nascita && (
+                  <span className="ml-2 text-gray-400">
+                    · Nato/a il {new Date(atleta.data_nascita + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </span>
                 )}
               </div>
             </div>

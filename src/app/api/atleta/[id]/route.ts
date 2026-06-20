@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // 1. Dati atleta
   const { data: atletaList } = await supabase
     .from('atleti')
-    .select('id, nome_cognome, categoria_corrente, numero_tessera')
+    .select('id, nome_cognome, categoria_corrente, numero_tessera, data_nascita')
     .filter('id', 'eq', id)
     .limit(1)
 
@@ -126,6 +126,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       nome: atleta.nome_cognome,
       categoria: atleta.categoria_corrente,
       numero_tessera: atleta.numero_tessera ?? null,
+      data_nascita: atleta.data_nascita ?? null,
     },
     puntiTotali,
     posizione,
