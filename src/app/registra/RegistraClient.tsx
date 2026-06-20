@@ -532,7 +532,6 @@ export default function RegistraClient({
         </div>
       </div>
       </div>
-      </div>
     )
   }
 
@@ -751,7 +750,6 @@ export default function RegistraClient({
         >
           {loading ? 'Salvataggio...' : 'Registra evento'}
         </button>
-      </div>
       </div>
       </div>
     </div>
