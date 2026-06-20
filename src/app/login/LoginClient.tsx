@@ -94,7 +94,7 @@ export default function LoginClient({ atleti }: { atleti: Atleta[] }) {
           <h1 className="text-3xl font-extrabold text-orange-500 tracking-tight">
             BrontoloBike
           </h1>
-          <p className="text-gray-500 text-sm mt-1">Campionato Sociale 2027</p>
+          <p className="text-gray-500 text-sm mt-1">Campionato Sociale {new Date().getFullYear()}</p>
         </div>
 
         <button

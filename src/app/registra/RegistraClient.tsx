@@ -351,7 +351,9 @@ export default function RegistraClient({
       : risultatiRicerca
 
     return (
-      <div className="min-h-screen bg-gray-50 py-10 px-4">
+      <div className="min-h-screen flex flex-col">
+        <div className="bb-stripe w-full h-2 shrink-0" />
+        <div className="flex-1 py-8 px-4">
         <div className="max-w-lg mx-auto bg-white rounded-2xl shadow p-6">
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Registra evento</h1>
           <p className="text-sm text-gray-500 mb-4">
@@ -529,6 +531,8 @@ export default function RegistraClient({
           </button>
         </div>
       </div>
+      </div>
+      </div>
     )
   }
 
@@ -536,7 +540,9 @@ export default function RegistraClient({
   const anteprima = calcolaAnteprima()
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen flex flex-col">
+      <div className="bb-stripe w-full h-2 shrink-0" />
+      <div className="flex-1 py-8 px-4">
       <div className="max-w-lg mx-auto bg-white rounded-2xl shadow p-6">
         <div className="flex items-center gap-3 mb-6">
           <button
@@ -745,6 +751,8 @@ export default function RegistraClient({
         >
           {loading ? 'Salvataggio...' : 'Registra evento'}
         </button>
+      </div>
+      </div>
       </div>
     </div>
   )
