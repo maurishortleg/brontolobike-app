@@ -15,18 +15,35 @@ type Registrazione = {
   punti: number
 }
 
+type EventoCatalogo = {
+  id: string
+  nome: string
+  data: string | null
+  data_fine: string | null
+  luogo: string | null
+  tipologia: string | null
+  url: string
+  percorsi: { nome: string; km: number; dislivello: number | null }[]
+}
+
 export default function CalendarioClient() {
   const [dataSelezionata, setDataSelezionata] = useState<string>('')
   const [registrazioni, setRegistrazioni] = useState<Registrazione[]>([])
+  const [eventiCatalogo, setEventiCatalogo] = useState<EventoCatalogo[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (!dataSelezionata) { setRegistrazioni([]); return }
+    if (!dataSelezionata) { setRegistrazioni([]); setEventiCatalogo([]); return }
     setLoading(true)
-    fetch(`/api/calendario-club/giorno?data=${dataSelezionata}`)
-      .then((r) => r.json())
-      .then((d) => setRegistrazioni(d.registrazioni ?? []))
-      .catch(() => setRegistrazioni([]))
+    Promise.all([
+      fetch(`/api/calendario-club/giorno?data=${dataSelezionata}`).then((r) => r.json()),
+      fetch(`/api/eventi-per-data?data=${dataSelezionata}`).then((r) => r.json()),
+    ])
+      .then(([club, catalogo]) => {
+        setRegistrazioni(club.registrazioni ?? [])
+        setEventiCatalogo(catalogo.risultati ?? [])
+      })
+      .catch(() => { setRegistrazioni([]); setEventiCatalogo([]) })
       .finally(() => setLoading(false))
   }, [dataSelezionata])
 
@@ -62,6 +79,7 @@ export default function CalendarioClient() {
               {dataFormattata}
             </h2>
 
+            {/* Le mie registrazioni */}
             {registrazioni.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm">
                 Nessuna registrazione per questo giorno
@@ -86,6 +104,54 @@ export default function CalendarioClient() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Eventi dal catalogo */}
+            {eventiCatalogo.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                  Eventi in calendario
+                </h3>
+                <div className="flex flex-col gap-3">
+                  {eventiCatalogo.map((ev) => (
+                    <div key={ev.id} className="bg-gray-50 rounded-xl border border-gray-100 p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-semibold text-gray-800 text-sm">{ev.nome}</div>
+                          {ev.luogo && (
+                            <div className="text-xs text-gray-400 mt-0.5">{ev.luogo}</div>
+                          )}
+                          {ev.percorsi?.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {ev.percorsi.map((p, i) => (
+                                <span key={i}>
+                                  {i > 0 && ' · '}
+                                  {p.km} km{p.dislivello ? ` / ${p.dislivello} m ↑` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {ev.tipologia && (
+                          <span className="text-xs bg-orange-50 text-orange-600 border border-orange-100 rounded-full px-2 py-0.5 whitespace-nowrap shrink-0">
+                            {ev.tipologia}
+                          </span>
+                        )}
+                      </div>
+                      {ev.url && (
+                        <a
+                          href={ev.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-500 hover:underline mt-2 inline-block"
+                        >
+                          Sito ufficiale →
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
