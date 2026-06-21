@@ -3,61 +3,6 @@ import { createClient } from '@supabase/supabase-js'
 
 const ANNO = new Date().getFullYear()
 
-// Ogni fonte ha più query: la prima punta alle pagine evento specifiche (con km/dislivello),
-// la seconda al calendario generale come fallback.
-const FONTI: { nome: string; dominio: string; url: string; queries: string[] }[] = [
-  {
-    nome: 'Audax Italia',
-    dominio: 'audaxitalia.it',
-    url: 'https://www.audaxitalia.it/',
-    queries: [
-      `site:audaxitalia.it brevetto permanente ${ANNO} italia km dislivello iscrizioni`,
-      `site:audaxitalia.it randonnee ${ANNO} italia percorso km`,
-      `site:audaxitalia.it calendario ${ANNO} italia`,
-    ],
-  },
-  {
-    nome: 'GravelLand',
-    dominio: 'gravelland.it',
-    url: 'https://www.gravelland.it/',
-    queries: [
-      `site:gravelland.it ${ANNO} percorsi km dislivello iscrizioni italia`,
-      `site:gravelland.it uva fragola greenland ${ANNO} km dislivello`,
-      `site:gravelland.it eventi ${ANNO} italia`,
-    ],
-  },
-  {
-    nome: 'Endu',
-    dominio: 'endu.net',
-    url: 'https://www.endu.net/',
-    queries: [
-      `site:endu.net ciclismo gravel granfondo ${ANNO} italia km dislivello percorsi`,
-      `site:endu.net cycling event ${ANNO} italy km elevation`,
-      `site:endu.net calendario ciclismo ${ANNO} italia`,
-    ],
-  },
-  {
-    nome: 'Battistrada',
-    dominio: 'battistrada.com',
-    url: 'https://battistrada.com/en/cycling-calendar/',
-    queries: [
-      `site:battistrada.com cycling event ${ANNO} italy km elevation route`,
-      `site:battistrada.com granfondo gravel ${ANNO} italia percorso km`,
-      `site:battistrada.com cycling calendar ${ANNO} italy`,
-    ],
-  },
-  {
-    nome: 'Granfondo',
-    dominio: 'granfondo.it',
-    url: 'https://www.granfondo.it/',
-    queries: [
-      `site:granfondo.it granfondo ${ANNO} italia km dislivello percorso iscrizioni`,
-      `site:granfondo.it gara ciclistica ${ANNO} italia km`,
-      `site:granfondo.it calendario ${ANNO} italia`,
-    ],
-  },
-]
-
 const TIPOLOGIE = [
   'Bike Camp Livigno', 'Brevetto Permanente Gravel', 'Brevetto Permanente Strada',
   'Brontolo Bike Day', 'Ciclocross', 'Gara in Circuito (CRIT)', 'Gran/Medio Fondo',
@@ -97,6 +42,20 @@ export async function GET(req: NextRequest) {
   )
 
   const tipologieStr = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
+
+  // Carica fonti dal DB
+  const { data: fontiDB, error: fontiError } = await supabase
+    .from('fonti_eventi')
+    .select('*')
+    .eq('attiva', true)
+    .order('id', { ascending: true })
+
+  if (fontiError || !fontiDB?.length) {
+    return Response.json({ error: 'Nessuna fonte configurata nel DB' }, { status: 500 })
+  }
+
+  type Fonte = { id: number; nome: string; dominio: string; url: string; queries: string[] }
+  const FONTI: Fonte[] = fontiDB
 
   // ?fonte=N processa solo quella fonte (per trigger manuale su piano Hobby)
   const fonteParam = req.nextUrl.searchParams.get('fonte')

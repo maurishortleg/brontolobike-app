@@ -13,6 +13,15 @@ type Atleta = {
   attivo: boolean
 }
 
+type FonteEventi = {
+  id: number
+  nome: string
+  dominio: string
+  url: string
+  queries: string[]
+  attiva: boolean
+}
+
 type Registrazione = {
   id: string
   evento: string
@@ -37,6 +46,13 @@ export default function AdminClient() {
   const [editRegId, setEditRegId] = useState<string | null>(null)
   const [editPunti, setEditPunti] = useState('')
   const [msg, setMsg] = useState('')
+  const [fonti, setFonti] = useState<FonteEventi[]>([])
+  const [nuovaFonte, setNuovaFonte] = useState({ nome: '', dominio: '', url: '' })
+  const [msgFonti, setMsgFonti] = useState('')
+
+  useEffect(() => {
+    fetch('/api/admin/fonti').then((r) => r.json()).then((d) => setFonti(d.fonti ?? []))
+  }, [])
 
   useEffect(() => {
     fetch('/api/admin/atleti')
@@ -113,6 +129,44 @@ export default function AdminClient() {
       setRegs((prev) => prev.map((x) => x.id === id ? { ...x, punti: Number(editPunti) } : x))
       setEditRegId(null)
     }
+  }
+
+  async function aggiungiFonte() {
+    if (!nuovaFonte.nome.trim() || !nuovaFonte.url.trim()) return
+    const dominioCalcolato = nuovaFonte.dominio.trim() ||
+      (() => { try { return new URL(nuovaFonte.url).hostname.replace('www.', '') } catch { return '' } })()
+    const r = await fetch('/api/admin/fonti', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...nuovaFonte, dominio: dominioCalcolato }),
+    })
+    if (r.ok) {
+      const d = await r.json()
+      setFonti((prev) => [...prev, d.fonte])
+      setNuovaFonte({ nome: '', dominio: '', url: '' })
+      setMsgFonti('Fonte aggiunta.')
+    } else {
+      setMsgFonti('Errore nel salvataggio.')
+    }
+  }
+
+  async function toggleFonte(f: FonteEventi) {
+    await fetch('/api/admin/fonti', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: f.id, attiva: !f.attiva }),
+    })
+    setFonti((prev) => prev.map((x) => x.id === f.id ? { ...x, attiva: !f.attiva } : x))
+  }
+
+  async function eliminaFonte(id: number) {
+    if (!confirm('Eliminare questa fonte?')) return
+    const r = await fetch('/api/admin/fonti', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    if (r.ok) setFonti((prev) => prev.filter((x) => x.id !== id))
   }
 
   const atletiFiltrati = atleti.filter((a) => {
@@ -243,6 +297,60 @@ export default function AdminClient() {
                 {msg && <div className="text-xs text-center text-gray-500">{msg}</div>}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Fonti eventi */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 mt-6">
+          <h2 className="font-semibold text-gray-700 mb-3">Siti fonte eventi</h2>
+
+          <div className="flex flex-col gap-2 mb-4">
+            {fonti.map((f) => (
+              <div key={f.id} className="flex items-center justify-between gap-2 border border-gray-100 rounded-xl px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm text-gray-800">{f.nome}</div>
+                  <a href={f.url} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-blue-500 hover:underline truncate block">{f.url}</a>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => toggleFonte(f)}
+                    className={`text-xs px-2 py-0.5 rounded-full border ${f.attiva ? 'text-green-600 border-green-200 bg-green-50' : 'text-gray-400 border-gray-200 bg-gray-50'}`}
+                  >
+                    {f.attiva ? 'attiva' : 'disattiva'}
+                  </button>
+                  <button onClick={() => eliminaFonte(f.id)} className="text-xs text-red-400 hover:text-red-600">🗑</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <div className="text-xs font-semibold text-gray-500 mb-2">Aggiungi sito</div>
+            <div className="flex flex-col gap-2">
+              <input
+                type="text"
+                placeholder="Nome (es. Fiab)"
+                value={nuovaFonte.nome}
+                onChange={(e) => setNuovaFonte((p) => ({ ...p, nome: e.target.value }))}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                type="url"
+                placeholder="URL (es. https://www.fiab.it/calendario)"
+                value={nuovaFonte.url}
+                onChange={(e) => setNuovaFonte((p) => ({ ...p, url: e.target.value }))}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              />
+              <button
+                onClick={aggiungiFonte}
+                disabled={!nuovaFonte.nome.trim() || !nuovaFonte.url.trim()}
+                className="bg-orange-500 text-white text-sm font-semibold rounded-lg py-2 disabled:opacity-40"
+              >
+                Aggiungi
+              </button>
+              {msgFonti && <div className="text-xs text-center text-gray-500">{msgFonti}</div>}
+            </div>
           </div>
         </div>
 
