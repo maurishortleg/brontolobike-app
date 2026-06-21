@@ -103,10 +103,7 @@ export default async function HomePage() {
 
         {user && (
           <form action="/auth/logout" method="POST" className="text-center">
-            <button type="submit" className="text-xs transition-colors"
-                    style={{ color: 'rgba(255,255,255,0.25)' }}
-                    onMouseOver={e => (e.currentTarget.style.color = '#FF006E')}
-                    onMouseOut={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.25)')}>
+            <button type="submit" className="text-xs transition-colors bb-btn-logout">
               Esci ({user.email})
             </button>
           </form>
