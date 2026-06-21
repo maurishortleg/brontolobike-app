@@ -55,6 +55,8 @@ function correggiRandonnee(tipologia: string | null, km: number | null): string 
   return km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
 }
 
+export const maxDuration = 60
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
@@ -74,10 +76,11 @@ export async function GET(req: NextRequest) {
   )
 
   const tipologieStr = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
-  const log: string[] = []
-  let nuovi = 0
 
-  for (const fonte of FONTI) {
+  // Processa tutte le fonti in parallelo
+  const risultatiPerFonte = await Promise.all(FONTI.map(async (fonte) => {
+    const logFonte: string[] = []
+    let nuoviFonte = 0
     try {
       // Cerca eventi sul sito tramite Tavily
       // Fase 1: cerca sul sito specifico
@@ -96,8 +99,8 @@ export async function GET(req: NextRequest) {
       })
 
       if (!tavilyRes.ok) {
-        log.push(`⚠️ ${fonte.nome}: errore Tavily ${tavilyRes.status}`)
-        continue
+        logFonte.push(`⚠️ ${fonte.nome}: errore Tavily ${tavilyRes.status}`)
+        return { log: logFonte, nuovi: nuoviFonte }
       }
 
       const tavilyData = await tavilyRes.json()
@@ -105,8 +108,8 @@ export async function GET(req: NextRequest) {
       const images: { url: string; description?: string }[] = tavilyData.images ?? []
 
       if (results.length === 0) {
-        log.push(`⚠️ ${fonte.nome}: nessun risultato Tavily`)
-        continue
+        logFonte.push(`⚠️ ${fonte.nome}: nessun risultato Tavily`)
+        return { log: logFonte, nuovi: nuoviFonte }
       }
 
       // Scarica immagini mappa per arricchire l'estrazione
@@ -157,8 +160,8 @@ ${textResults}`
       )
 
       if (!geminiRes.ok) {
-        log.push(`⚠️ ${fonte.nome}: errore Gemini ${geminiRes.status}`)
-        continue
+        logFonte.push(`⚠️ ${fonte.nome}: errore Gemini ${geminiRes.status}`)
+        return { log: logFonte, nuovi: nuoviFonte }
       }
 
       const geminiData = await geminiRes.json()
@@ -175,26 +178,19 @@ ${textResults}`
         const parsed = JSON.parse(cleaned)
         eventi = Array.isArray(parsed) ? parsed : []
       } catch {
-        log.push(`⚠️ ${fonte.nome}: JSON non valido`)
-        continue
+        logFonte.push(`⚠️ ${fonte.nome}: JSON non valido`)
+        return { log: logFonte, nuovi: nuoviFonte }
       }
 
-      let nuoviPerFonte = 0
-      for (const ev of eventi) {
-        if (!ev.nome?.trim()) continue
+      await Promise.all(eventi.map(async (ev) => {
+        if (!ev.nome?.trim()) return
 
-        // Applica correzioni tipologia
         const dominio = dominioUrl(ev.url ?? '')
         if (dominio === 'gravelland.it') {
           ev.tipologia = 'Gravel di GRAvelAND'
-          ev.percorsi = ev.percorsi?.map((p) => ({
-            ...p,
-            tipologia: 'Gravel di GRAvelAND',
-          })) ?? []
+          ev.percorsi = ev.percorsi?.map((p) => ({ ...p, tipologia: 'Gravel di GRAvelAND' })) ?? []
         } else {
-          const kmMax = ev.percorsi?.length > 0
-            ? Math.max(...ev.percorsi.map((p) => p.km ?? 0))
-            : null
+          const kmMax = ev.percorsi?.length > 0 ? Math.max(...ev.percorsi.map((p) => p.km ?? 0)) : null
           ev.tipologia = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
           ev.percorsi = ev.percorsi?.map((p) => ({
             ...p,
@@ -202,12 +198,8 @@ ${textResults}`
           })) ?? []
         }
 
-        // Controlla se esiste già (per nome, case-insensitive)
         const { data: esistente } = await supabase
-          .from('eventi_ricercati')
-          .select('id')
-          .ilike('nome', ev.nome.trim())
-          .maybeSingle()
+          .from('eventi_ricercati').select('id').ilike('nome', ev.nome.trim()).maybeSingle()
 
         if (!esistente) {
           await supabase.from('eventi_ricercati').insert({
@@ -220,16 +212,19 @@ ${textResults}`
             percorsi: ev.percorsi ?? [],
             attivo: true,
           })
-          nuoviPerFonte++
-          nuovi++
+          nuoviFonte++
         }
-      }
+      }))
 
-      log.push(`✅ ${fonte.nome}: ${eventi.length} eventi trovati, ${nuoviPerFonte} nuovi`)
+      logFonte.push(`✅ ${fonte.nome}: ${eventi.length} eventi trovati, ${nuoviFonte} nuovi`)
     } catch (e) {
-      log.push(`❌ ${fonte.nome}: errore - ${e}`)
+      logFonte.push(`❌ ${fonte.nome}: errore - ${e}`)
     }
-  }
+    return { log: logFonte, nuovi: nuoviFonte }
+  }))
+
+  const log = risultatiPerFonte.flatMap((r) => r.log)
+  const nuovi = risultatiPerFonte.reduce((acc, r) => acc + r.nuovi, 0)
 
   return Response.json({
     messaggio: `Scoperta completata: ${nuovi} nuovi eventi aggiunti`,
