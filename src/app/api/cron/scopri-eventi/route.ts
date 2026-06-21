@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { fetchImmaginiMappa } from '@/lib/tavily'
 
 const ANNO = new Date().getFullYear()
 
@@ -96,10 +95,9 @@ export async function GET(req: NextRequest) {
         body: JSON.stringify({
           api_key: tavilyKey,
           query: fonte.query,
-          search_depth: 'advanced',
-          max_results: 10,
+          search_depth: 'basic',
+          max_results: 8,
           include_answer: false,
-          include_images: true,
           include_domains: [fonte.dominio],
         }),
       })
@@ -111,15 +109,11 @@ export async function GET(req: NextRequest) {
 
       const tavilyData = await tavilyRes.json()
       const results: { title: string; url: string; content: string }[] = tavilyData.results ?? []
-      const images: { url: string; description?: string }[] = tavilyData.images ?? []
 
       if (results.length === 0) {
         logFonte.push(`⚠️ ${fonte.nome}: nessun risultato Tavily`)
         return { log: logFonte, nuovi: nuoviFonte }
       }
-
-      // Scarica immagini mappa per arricchire l'estrazione
-      const immagini = await fetchImmaginiMappa(images, 2)
 
       const textResults = results
         .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
@@ -148,20 +142,12 @@ Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi restit
 RISULTATI:
 ${textResults}`
 
-      const parts: object[] = [{ text: prompt }]
-      for (const img of immagini) {
-        parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } })
-      }
-      if (immagini.length > 0) {
-        parts.push({ text: 'Le immagini sopra potrebbero contenere mappe o altimetrie del tracciato. Estrai da esse km e dislivello se presenti.' })
-      }
-
       const geminiRes = await fetch(
         `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts }] }),
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
         }
       )
 
