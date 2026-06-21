@@ -77,8 +77,14 @@ export async function GET(req: NextRequest) {
 
   const tipologieStr = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
 
-  // Processa tutte le fonti in parallelo
-  const risultatiPerFonte = await Promise.all(FONTI.map(async (fonte) => {
+  // ?fonte=N processa solo quella fonte (per trigger manuale su piano Hobby)
+  const fonteParam = req.nextUrl.searchParams.get('fonte')
+  const fontiDaProcessare = fonteParam !== null
+    ? [FONTI[parseInt(fonteParam)]].filter(Boolean)
+    : FONTI
+
+  // Processa le fonti in parallelo
+  const risultatiPerFonte = await Promise.all(fontiDaProcessare.map(async (fonte) => {
     const logFonte: string[] = []
     let nuoviFonte = 0
     try {
