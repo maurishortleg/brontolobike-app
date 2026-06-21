@@ -10,66 +10,76 @@ export default async function HomePage() {
   const admin = isAdmin(user)
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-start px-4 pt-0">
-      {/* Striscia decorativa top con gradiente maglia */}
-      <div className="bb-stripe w-full h-2 mb-0" />
+    <main className="min-h-screen flex flex-col items-center px-4 pt-0 overflow-hidden">
 
-      <div className="flex flex-col items-center justify-center flex-1 w-full max-w-sm py-10">
-        {/* Logo / Titolo */}
-        <div className="mb-8 text-center">
-          <h1 className="text-5xl font-extrabold tracking-tight mb-1"
-              style={{ background: 'linear-gradient(105deg, #ec4899 0%, #f97316 50%, #84cc16 100%)',
-                       WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+      {/* Header hero con blocchi geometrici diagonali */}
+      <div className="w-full relative overflow-hidden" style={{ minHeight: 220 }}>
+        {/* Blocchi colore ispirati alla maglia */}
+        <div className="absolute inset-0" style={{
+          background: 'linear-gradient(108deg, #FF006E 0% 22%, #0055CC 22% 42%, #FF5500 42% 62%, #D8FF00 62% 100%)',
+        }} />
+        {/* Sovrapposizione scura per leggibilità */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(10,10,10,0.85) 100%)' }} />
+
+        {/* Rombi decorativi */}
+        <div className="absolute top-4 right-4 w-16 h-16 rotate-45 opacity-20" style={{ background: '#D8FF00' }} />
+        <div className="absolute bottom-6 left-6 w-10 h-10 rotate-12 opacity-15" style={{ background: '#FF006E' }} />
+        <div className="absolute top-10 right-20 w-6 h-6 rotate-45 opacity-25" style={{ background: '#fff' }} />
+
+        {/* Contenuto header */}
+        <div className="relative z-10 flex flex-col items-center justify-center pt-10 pb-8 px-4 text-center">
+          <div className="inline-flex items-center gap-2 mb-3">
+            <div className="w-3 h-3 rounded-full" style={{ background: '#FF006E' }} />
+            <div className="w-3 h-3 rounded-full" style={{ background: '#0055CC' }} />
+            <div className="w-3 h-3 rounded-full" style={{ background: '#FF5500' }} />
+            <div className="w-3 h-3 rounded-full" style={{ background: '#D8FF00' }} />
+          </div>
+          <h1 className="text-5xl font-black tracking-tight leading-none mb-1 bb-text-gradient drop-shadow-lg">
             BrontoloBike
           </h1>
-          <p className="text-gray-400 text-sm font-medium tracking-wide uppercase">
+          <p className="text-xs font-bold tracking-[0.25em] uppercase mt-2"
+             style={{ color: 'rgba(255,255,255,0.55)' }}>
             Campionato Sociale {new Date().getFullYear()}
           </p>
         </div>
+      </div>
 
-        {/* Menu card */}
-        <div className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex flex-col gap-3">
-          <Link
-            href="/registra"
-            className="w-full text-white font-semibold py-3 rounded-xl transition-all text-center"
-            style={{ background: 'linear-gradient(105deg, #f97316, #fb923c)' }}
-          >
-            Registra evento
-          </Link>
+      {/* Menu */}
+      <div className="w-full max-w-sm -mt-2 pb-10">
 
-          <Link
-            href="/classifica"
-            className="w-full border border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-600 font-semibold py-3 rounded-xl transition-colors text-center"
-          >
+        {/* Pulsante principale */}
+        <Link
+          href="/registra"
+          className="bb-btn-primary w-full py-4 rounded-2xl text-center block text-base mb-3 shadow-lg"
+          style={{ boxShadow: '0 0 24px rgba(255,85,0,0.35)' }}
+        >
+          🚴 Registra evento
+        </Link>
+
+        {/* Card menu secondario */}
+        <div className="bb-card rounded-2xl p-4 flex flex-col gap-2 mb-3">
+          <Link href="/classifica" className="bb-btn-outline w-full py-3 rounded-xl text-center block text-sm">
             Classifica
           </Link>
 
           {user ? (
             <>
               {atletaId && (
-                <Link
-                  href={`/atleta/${atletaId}`}
-                  className="w-full border border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-600 font-semibold py-3 rounded-xl transition-colors text-center"
-                >
+                <Link href={`/atleta/${atletaId}`} className="bb-btn-outline w-full py-3 rounded-xl text-center block text-sm">
                   La mia scheda
                 </Link>
               )}
-              <Link
-                href="/miei-eventi"
-                className="w-full border border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-600 font-semibold py-3 rounded-xl transition-colors text-center"
-              >
+              <Link href="/miei-eventi" className="bb-btn-outline w-full py-3 rounded-xl text-center block text-sm">
                 I miei eventi
               </Link>
-              <Link
-                href="/calendario"
-                className="w-full border border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-600 font-semibold py-3 rounded-xl transition-colors text-center"
-              >
+              <Link href="/calendario" className="bb-btn-outline w-full py-3 rounded-xl text-center block text-sm">
                 Il mio calendario
               </Link>
               {!atletaId && (
                 <Link
                   href="/collega-profilo"
-                  className="w-full border border-orange-200 text-orange-600 hover:bg-orange-50 font-semibold py-3 rounded-xl transition-colors text-center"
+                  className="w-full py-3 rounded-xl text-center block text-sm font-semibold transition-all"
+                  style={{ border: '1.5px solid #D8FF00', color: '#D8FF00', background: 'rgba(216,255,0,0.06)' }}
                 >
                   Collega il tuo profilo atleta
                 </Link>
@@ -77,34 +87,37 @@ export default async function HomePage() {
               {admin && (
                 <Link
                   href="/admin"
-                  className="w-full border border-gray-200 text-gray-500 hover:border-gray-300 font-semibold py-3 rounded-xl transition-colors text-center text-sm"
+                  className="w-full py-3 rounded-xl text-center block text-xs font-semibold transition-all"
+                  style={{ border: '1.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}
                 >
                   Pannello Admin
                 </Link>
               )}
-              <div className="border-t border-gray-100 pt-2 mt-1">
-                <form action="/auth/logout" method="POST">
-                  <button type="submit" className="text-sm text-gray-400 hover:text-red-400 transition-colors w-full text-center">
-                    Esci ({user.email})
-                  </button>
-                </form>
-              </div>
             </>
           ) : (
-            <Link
-              href="/login"
-              className="w-full border border-gray-200 text-gray-700 hover:border-orange-300 hover:text-orange-600 font-semibold py-3 rounded-xl transition-colors text-center"
-            >
+            <Link href="/login" className="bb-btn-outline w-full py-3 rounded-xl text-center block text-sm">
               Accedi
             </Link>
           )}
         </div>
 
-        {/* Decorazione geometrica sotto */}
-        <div className="mt-8 flex gap-2 opacity-30">
-          <div className="w-8 h-8 rounded-md rotate-12" style={{ background: '#f97316' }} />
-          <div className="w-8 h-8 rounded-md -rotate-6" style={{ background: '#ec4899' }} />
-          <div className="w-8 h-8 rounded-md rotate-3"  style={{ background: '#a3e635' }} />
+        {user && (
+          <form action="/auth/logout" method="POST" className="text-center">
+            <button type="submit" className="text-xs transition-colors"
+                    style={{ color: 'rgba(255,255,255,0.25)' }}
+                    onMouseOver={e => (e.currentTarget.style.color = '#FF006E')}
+                    onMouseOut={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.25)')}>
+              Esci ({user.email})
+            </button>
+          </form>
+        )}
+
+        {/* Decorazione geometrica bottom */}
+        <div className="flex justify-center gap-3 mt-10 opacity-20">
+          <div className="w-10 h-3 rounded-full rotate-12" style={{ background: '#FF006E' }} />
+          <div className="w-10 h-3 rounded-full -rotate-6" style={{ background: '#0055CC' }} />
+          <div className="w-10 h-3 rounded-full rotate-3"  style={{ background: '#FF5500' }} />
+          <div className="w-10 h-3 rounded-full -rotate-12" style={{ background: '#D8FF00' }} />
         </div>
       </div>
     </main>

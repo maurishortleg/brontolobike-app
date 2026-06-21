@@ -1,33 +1,85 @@
 @import "tailwindcss";
 
-/* ── BrontoloBike Design System ──────────────────────────────────────────── */
+/* ── BrontoloBike Design System — Palette maglia ────────────────────────── */
 :root {
-  --bb-orange: #f97316;
-  --bb-lime:   #a3e635;
-  --bb-pink:   #ec4899;
-  --bb-navy:   #1e293b;
+  --bb-yellow: #D8FF00;   /* giallo neon maglia */
+  --bb-pink:   #FF006E;   /* fucsia maglia */
+  --bb-blue:   #0055CC;   /* blu elettrico maglia */
+  --bb-orange: #FF5500;   /* arancio maglia */
+  --bb-black:  #0A0A0A;   /* nero pantaloncini */
 }
 
-/* Sfondo globale: bianco con leggere sfumature dei colori maglia */
+/* Sfondo globale scuro stile sportivo */
 .bb-bg {
-  background-color: #f9fafb;
+  background-color: #0f0f0f;
   background-image:
-    radial-gradient(ellipse 60% 40% at 110% -10%, rgba(249,115,22,0.13) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 35% at -10% 110%, rgba(163,230,53,0.10) 0%, transparent 70%),
-    radial-gradient(ellipse 40% 30% at 85%  5%,   rgba(236,72,153,0.07) 0%, transparent 60%);
+    radial-gradient(ellipse 70% 50% at 100% 0%,   rgba(216,255,0,0.08)  0%, transparent 65%),
+    radial-gradient(ellipse 60% 40% at 0%   100%, rgba(255,0,110,0.07)  0%, transparent 65%),
+    radial-gradient(ellipse 50% 40% at 50%  50%,  rgba(0,85,204,0.05)   0%, transparent 70%);
   min-height: 100vh;
 }
 
-/* Striscia header con gradiente maglia */
+/* Striscia header diagonale multi-colore */
 .bb-stripe {
   background: linear-gradient(105deg,
-    var(--bb-pink)   0%,
-    var(--bb-orange) 50%,
-    var(--bb-lime)   100%
+    var(--bb-pink)   0%   18%,
+    var(--bb-blue)   18%  36%,
+    var(--bb-orange) 36%  54%,
+    var(--bb-yellow) 54%  100%
   );
 }
 
-/* Placeholder più scuro */
+/* Gradiente testo logo */
+.bb-text-gradient {
+  background: linear-gradient(105deg, var(--bb-pink) 0%, var(--bb-orange) 45%, var(--bb-yellow) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Pulsante primario neon */
+.bb-btn-primary {
+  background: linear-gradient(105deg, var(--bb-pink) 0%, var(--bb-orange) 100%);
+  color: #fff;
+  font-weight: 700;
+  transition: filter 0.15s, transform 0.1s;
+}
+.bb-btn-primary:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+.bb-btn-primary:active { transform: translateY(0); }
+
+/* Pulsante outline su dark */
+.bb-btn-outline {
+  border: 1.5px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.85);
+  font-weight: 600;
+  background: rgba(255,255,255,0.04);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.bb-btn-outline:hover {
+  border-color: var(--bb-yellow);
+  color: var(--bb-yellow);
+  background: rgba(216,255,0,0.06);
+}
+
+/* Card dark (menu home) */
+.bb-card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  backdrop-filter: blur(8px);
+}
+
+/* Card contenuto pagine interne — sfondo chiaro per compatibilità testo */
+.bb-card-content {
+  background: #ffffff;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 1rem;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.25);
+}
+
+/* Placeholder */
 ::placeholder {
   color: #6b7280;
   opacity: 1;
