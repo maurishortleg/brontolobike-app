@@ -1,14 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-// Aggiungi o rimuovi siti da cercare preferenzialmente
-const SITI_PREFERENZIALI = [
-  'gravelland.it',
-  'battistrada.com',
-  'audaxitalia.it',
-  'granfondo.it',
-  'endu.net',
-]
+import { tavilySearch, fetchImmaginiMappa } from '@/lib/tavily'
 
 // Deve corrispondere esattamente ai nomi nella tabella tipologie_evento
 const TIPOLOGIE = [
@@ -72,36 +64,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Chiave API di ricerca non configurata' }, { status: 500 })
   }
 
-  const tavilyRes = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      api_key: tavilyKey,
-      query: `${query} ciclismo ${anno} percorsi km dislivello`,
-      search_depth: 'advanced',
-      max_results: 8,
-      include_answer: false,
-      include_domains: SITI_PREFERENZIALI,
-    }),
-  })
-
-  let tavilyData = tavilyRes.ok ? await tavilyRes.json() : { results: [] }
-  if ((tavilyData.results ?? []).length === 0) {
-    const fallbackRes = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: tavilyKey,
-        query: `${query} ciclismo ${anno} percorsi km dislivello`,
-        search_depth: 'advanced',
-        max_results: 8,
-        include_answer: false,
-      }),
-    })
-    if (fallbackRes.ok) tavilyData = await fallbackRes.json()
-  }
-
-  const results: { title: string; url: string; content: string }[] = tavilyData.results ?? []
+  const { results, images } = await tavilySearch(
+    tavilyKey,
+    `${query} ciclismo ${anno} percorsi km dislivello`,
+    3,
+    8,
+  )
 
   if (results.length === 0) {
     return Response.json({ risultati: [] })
@@ -111,6 +79,9 @@ export async function POST(req: NextRequest) {
   if (!googleKey) {
     return Response.json({ risultati: [] })
   }
+
+  // Scarica immagini mappa/tracciato per arricchire l'estrazione
+  const immagini = await fetchImmaginiMappa(images, 3)
 
   const textResults = results
     .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
@@ -144,13 +115,22 @@ Restituisci SOLO un array JSON valido, senza markdown. Massimo 4 eventi distinti
 RISULTATI:
 ${textResults}`
 
+  // Costruisce i parts: testo + eventuali immagini mappa
+  const parts: object[] = [{ text: prompt }]
+  for (const img of immagini) {
+    parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } })
+  }
+  if (immagini.length > 0) {
+    parts.push({ text: 'Le immagini sopra potrebbero contenere mappe o altimetrie del tracciato. Estrai da esse km e dislivello se presenti.' })
+  }
+
   const geminiRes = await fetch(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts }],
       }),
     }
   )
