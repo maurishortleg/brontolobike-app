@@ -3,36 +3,58 @@ import { createClient } from '@supabase/supabase-js'
 
 const ANNO = new Date().getFullYear()
 
-const FONTI: { nome: string; dominio: string; url: string; query: string }[] = [
+// Ogni fonte ha più query: la prima punta alle pagine evento specifiche (con km/dislivello),
+// la seconda al calendario generale come fallback.
+const FONTI: { nome: string; dominio: string; url: string; queries: string[] }[] = [
   {
     nome: 'Audax Italia',
     dominio: 'audaxitalia.it',
     url: 'https://www.audaxitalia.it/',
-    query: `site:audaxitalia.it calendario brevetti randonnee ${ANNO}`,
+    queries: [
+      `site:audaxitalia.it brevetto permanente ${ANNO} italia km dislivello iscrizioni`,
+      `site:audaxitalia.it randonnee ${ANNO} italia percorso km`,
+      `site:audaxitalia.it calendario ${ANNO} italia`,
+    ],
   },
   {
     nome: 'GravelLand',
     dominio: 'gravelland.it',
     url: 'https://www.gravelland.it/',
-    query: `site:gravelland.it calendario gravel eventi ${ANNO}`,
+    queries: [
+      `site:gravelland.it ${ANNO} percorsi km dislivello iscrizioni italia`,
+      `site:gravelland.it uva fragola greenland ${ANNO} km dislivello`,
+      `site:gravelland.it eventi ${ANNO} italia`,
+    ],
   },
   {
     nome: 'Endu',
     dominio: 'endu.net',
     url: 'https://www.endu.net/',
-    query: `site:endu.net calendario ciclismo granfondo gravel ${ANNO} lombardia`,
+    queries: [
+      `site:endu.net ciclismo gravel granfondo ${ANNO} italia km dislivello percorsi`,
+      `site:endu.net cycling event ${ANNO} italy km elevation`,
+      `site:endu.net calendario ciclismo ${ANNO} italia`,
+    ],
   },
   {
     nome: 'Battistrada',
     dominio: 'battistrada.com',
     url: 'https://battistrada.com/en/cycling-calendar/',
-    query: `site:battistrada.com cycling calendar events ${ANNO} italy`,
+    queries: [
+      `site:battistrada.com cycling event ${ANNO} italy km elevation route`,
+      `site:battistrada.com granfondo gravel ${ANNO} italia percorso km`,
+      `site:battistrada.com cycling calendar ${ANNO} italy`,
+    ],
   },
   {
     nome: 'Granfondo',
     dominio: 'granfondo.it',
     url: 'https://www.granfondo.it/',
-    query: `site:granfondo.it calendario gare granfondo ${ANNO}`,
+    queries: [
+      `site:granfondo.it granfondo ${ANNO} italia km dislivello percorso iscrizioni`,
+      `site:granfondo.it gara ciclistica ${ANNO} italia km`,
+      `site:granfondo.it calendario ${ANNO} italia`,
+    ],
   },
 ]
 
@@ -88,27 +110,29 @@ export async function GET(req: NextRequest) {
     let nuoviFonte = 0
     try {
       // Cerca eventi sul sito tramite Tavily
-      // Fase 1: cerca sul sito specifico
-      const tavilyRes = await fetch('https://api.tavily.com/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          api_key: tavilyKey,
-          query: fonte.query,
-          search_depth: 'basic',
-          max_results: 8,
-          include_answer: false,
-          include_domains: [fonte.dominio],
-        }),
-      })
-
-      if (!tavilyRes.ok) {
-        logFonte.push(`⚠️ ${fonte.nome}: errore Tavily ${tavilyRes.status}`)
-        return { log: logFonte, nuovi: nuoviFonte }
+      // Esegue le query in sequenza, si ferma alla prima che restituisce risultati
+      let results: { title: string; url: string; content: string }[] = []
+      for (const query of fonte.queries) {
+        const tavilyRes = await fetch('https://api.tavily.com/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: tavilyKey,
+            query,
+            search_depth: 'basic',
+            max_results: 8,
+            include_answer: false,
+            include_domains: [fonte.dominio],
+          }),
+        })
+        if (!tavilyRes.ok) continue
+        const d = await tavilyRes.json()
+        const nuovi: { title: string; url: string; content: string }[] = d.results ?? []
+        // Aggiunge risultati non duplicati per URL
+        const urlEsistenti = new Set(results.map((r) => r.url))
+        results = [...results, ...nuovi.filter((r) => !urlEsistenti.has(r.url))]
+        if (results.length >= 8) break
       }
-
-      const tavilyData = await tavilyRes.json()
-      const results: { title: string; url: string; content: string }[] = tavilyData.results ?? []
 
       if (results.length === 0) {
         logFonte.push(`⚠️ ${fonte.nome}: nessun risultato Tavily`)
@@ -119,25 +143,27 @@ export async function GET(req: NextRequest) {
         .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
         .join('\n\n---\n\n')
 
-      const prompt = `Dai seguenti risultati del sito "${fonte.nome}" (${fonte.url}), estrai tutti gli eventi ciclistici del ${ANNO}.
+      const prompt = `Dai seguenti risultati del sito "${fonte.nome}" (${fonte.url}), estrai tutti gli eventi ciclistici del ${ANNO} che si svolgono in ITALIA.
 
 Per ogni evento crea un oggetto con:
-- nome: nome completo dell'evento
+- nome: nome completo e ufficiale dell'evento
 - data: data inizio YYYY-MM-DD, null se non trovata
 - data_fine: data fine YYYY-MM-DD per eventi multi-giorno, null altrimenti
-- luogo: città o paese di partenza, null se non trovato
+- luogo: città o paese di partenza in Italia, null se non trovato
 - tipologia: scegli da: ${tipologieStr} — oppure null
-- url: URL diretto all'evento (preferisci pagina specifica, non homepage)
-- percorsi: array con tutti i percorsi { nome, km (numero), dislivello (numero o null), tipologia (dalla lista o null) }
+- url: URL diretto alla pagina specifica dell'evento (non homepage né calendario generale)
+- percorsi: array con TUTTI i percorsi disponibili dell'evento, ognuno con:
+    { nome (nome ufficiale del percorso), km (numero intero), dislivello (numero intero o null), tipologia (dalla lista o null) }
 
-Regole:
-- Includi solo eventi del ${ANNO} o futuri
-- Se lo stesso evento appare più volte, tienilo una volta sola
-- Se non hai km o percorsi, metti percorsi: []
+Regole IMPORTANTI:
+- Includi SOLO eventi in Italia del ${ANNO} o futuri (escludi eventi già passati o all'estero)
+- Cerca TUTTI i percorsi: spesso un evento ha 3-5 distanze diverse (es. 60km, 80km, 110km, 160km) — includile tutte
+- I km e il dislivello possono essere nel testo, nelle tabelle o nelle descrizioni dei percorsi
+- Se lo stesso evento appare più volte, tienilo una volta sola con tutti i percorsi trovati
 - Per GravelLand usa sempre tipologia "Gravel di GRAvelAND"
-- Per Audax/brevetti usa "Randonnée fino a 120Km" o "Randonnée oltre i 120Km" in base ai km
+- Per Audax/brevetti usa "Randonnée fino a 120Km" o "Randonnée oltre i 120Km" in base ai km del percorso
 
-Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi restituisci [].
+Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi italiani restituisci [].
 
 RISULTATI:
 ${textResults}`
