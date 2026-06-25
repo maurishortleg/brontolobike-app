@@ -49,6 +49,8 @@ export default function AdminClient() {
   const [fonti, setFonti] = useState<FonteEventi[]>([])
   const [nuovaFonte, setNuovaFonte] = useState({ nome: '', dominio: '', url: '' })
   const [msgFonti, setMsgFonti] = useState('')
+  const [lanciando, setLanciando] = useState(false)
+  const [logRicerca, setLogRicerca] = useState<string[]>([])
 
   useEffect(() => {
     fetch('/api/admin/fonti').then((r) => r.json()).then((d) => setFonti(d.fonti ?? []))
@@ -157,6 +159,29 @@ export default function AdminClient() {
       body: JSON.stringify({ id: f.id, attiva: !f.attiva }),
     })
     setFonti((prev) => prev.map((x) => x.id === f.id ? { ...x, attiva: !f.attiva } : x))
+  }
+
+  async function lanciaRicerca() {
+    const fontiAttive = fonti.filter((f) => f.attiva)
+    if (fontiAttive.length === 0) { setMsgFonti('Nessuna fonte attiva.'); return }
+    setLanciando(true)
+    setLogRicerca([`Avvio ricerca su ${fontiAttive.length} fonti...`])
+    for (let i = 0; i < fontiAttive.length; i++) {
+      const f = fontiAttive[i]
+      setLogRicerca((prev) => [...prev, `⏳ ${f.nome}...`])
+      try {
+        // Trova l'indice globale nella lista completa (il backend usa l'indice della lista attiva ordinata)
+        const idxGlobale = fonti.filter((x) => x.attiva).indexOf(f)
+        const res = await fetch(`/api/cron/scopri-eventi?fonte=${idxGlobale}`)
+        const data = await res.json()
+        const riga = data.log?.[0] ?? `${f.nome}: completato`
+        setLogRicerca((prev) => [...prev.slice(0, -1), riga])
+      } catch {
+        setLogRicerca((prev) => [...prev.slice(0, -1), `❌ ${f.nome}: errore di rete`])
+      }
+    }
+    setLogRicerca((prev) => [...prev, '✅ Ricerca completata.'])
+    setLanciando(false)
   }
 
   async function eliminaFonte(id: number) {
@@ -302,7 +327,24 @@ export default function AdminClient() {
 
         {/* Fonti eventi */}
         <div className="bg-white rounded-2xl border border-gray-200 p-4 mt-6">
-          <h2 className="font-semibold text-gray-700 mb-3">Siti fonte eventi</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-700">Siti fonte eventi</h2>
+            <button
+              onClick={lanciaRicerca}
+              disabled={lanciando}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 text-white disabled:opacity-50 hover:bg-orange-600 transition-colors"
+            >
+              {lanciando ? 'In corso...' : '▶ Lancia ricerca'}
+            </button>
+          </div>
+
+          {logRicerca.length > 0 && (
+            <div className="mb-4 bg-gray-50 border border-gray-100 rounded-xl p-3 flex flex-col gap-1">
+              {logRicerca.map((riga, i) => (
+                <div key={i} className="text-xs text-gray-700 font-mono">{riga}</div>
+              ))}
+            </div>
+          )}
 
           <div className="flex flex-col gap-2 mb-4">
             {fonti.map((f) => (
