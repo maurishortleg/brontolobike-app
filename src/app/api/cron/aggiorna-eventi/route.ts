@@ -26,7 +26,7 @@ type EventoAggiornato = {
 const TIPOLOGIE = [
   'Bike Camp Livigno', 'Brevetto Permanente Gravel', 'Brevetto Permanente Strada',
   'Brontolo Bike Day', 'Ciclocross', 'Gara in Circuito (CRIT)', 'Gran/Medio Fondo',
-  'Gravel', 'Gravel di GRAvelAND', 'MTB', 'Pedalata Cicloturistica',
+  'Gravel', 'Gravel di GRAvellAND', 'MTB', 'Pedalata Cicloturistica',
   'Percorso con Credenziale', 'Randonnée fino a 120Km', 'Randonnée oltre i 120Km',
   'Trail', 'Uva Fragola',
 ]
@@ -200,12 +200,12 @@ ${textResults}`
         continue
       }
 
-      // Applica regola GRAvelAND
+      // Applica regola GRAvellAND
       if (dominioUrl(parsed.url ?? '') === 'gravelland.it') {
-        parsed.tipologia = 'Gravel di GRAvelAND'
+        parsed.tipologia = 'Gravel di GRAvellAND'
         parsed.percorsi = parsed.percorsi?.map((p) => ({
           ...p,
-          tipologia: p.tipologia === 'Gravel' ? 'Gravel di GRAvelAND' : (p.tipologia ?? 'Gravel di GRAvelAND'),
+          tipologia: p.tipologia === 'Gravel' ? 'Gravel di GRAvellAND' : (p.tipologia ?? 'Gravel di GRAvellAND'),
         })) ?? []
       }
 

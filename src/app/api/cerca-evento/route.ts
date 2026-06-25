@@ -12,7 +12,7 @@ const TIPOLOGIE = [
   'Gara in Circuito (CRIT)',
   'Gran/Medio Fondo',
   'Gravel',
-  'Gravel di GRAvelAND',
+  'Gravel di GRAvellAND',
   'MTB',
   'Pedalata Cicloturistica',
   'Percorso con Credenziale',
@@ -156,14 +156,14 @@ ${textResults}`
     parsed = parsed.map((ev) => {
       const dominio = dominioUrl(ev.url)
 
-      // Regola GRAvelAND
+      // Regola GRAvellAND
       if (dominio === 'gravelland.it') {
         return {
           ...ev,
-          tipologia: 'Gravel di GRAvelAND',
+          tipologia: 'Gravel di GRAvellAND',
           percorsi: ev.percorsi.map((p) => ({
             ...p,
-            tipologia: p.tipologia === 'Gravel' ? 'Gravel di GRAvelAND' : (p.tipologia ?? 'Gravel di GRAvelAND'),
+            tipologia: p.tipologia === 'Gravel' ? 'Gravel di GRAvellAND' : (p.tipologia ?? 'Gravel di GRAvellAND'),
           })),
         }
       }

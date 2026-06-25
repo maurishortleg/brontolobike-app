@@ -6,7 +6,7 @@ const ANNO = new Date().getFullYear()
 const TIPOLOGIE = [
   'Bike Camp Livigno', 'Brevetto Permanente Gravel', 'Brevetto Permanente Strada',
   'Brontolo Bike Day', 'Ciclocross', 'Gara in Circuito (CRIT)', 'Gran/Medio Fondo',
-  'Gravel', 'Gravel di GRAvelAND', 'MTB', 'Pedalata Cicloturistica',
+  'Gravel', 'Gravel di GRAvellAND', 'MTB', 'Pedalata Cicloturistica',
   'Percorso con Credenziale', 'Randonnée fino a 120Km', 'Randonnée oltre i 120Km',
   'Trail', 'Uva Fragola',
 ]
@@ -119,7 +119,7 @@ Regole IMPORTANTI:
 - Cerca TUTTI i percorsi: spesso un evento ha 3-5 distanze diverse (es. 60km, 80km, 110km, 160km) — includile tutte
 - I km e il dislivello possono essere nel testo, nelle tabelle o nelle descrizioni dei percorsi
 - Se lo stesso evento appare più volte, tienilo una volta sola con tutti i percorsi trovati
-- Per GravelLand usa sempre tipologia "Gravel di GRAvelAND"
+- Per GravelLand usa sempre tipologia "Gravel di GRAvellAND"
 - Per Audax/brevetti usa "Randonnée fino a 120Km" o "Randonnée oltre i 120Km" in base ai km del percorso
 
 Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi italiani restituisci [].
@@ -164,8 +164,8 @@ ${textResults}`
 
         const dominio = dominioUrl(ev.url ?? '')
         if (dominio === 'gravelland.it') {
-          ev.tipologia = 'Gravel di GRAvelAND'
-          ev.percorsi = ev.percorsi?.map((p) => ({ ...p, tipologia: 'Gravel di GRAvelAND' })) ?? []
+          ev.tipologia = 'Gravel di GRAvellAND'
+          ev.percorsi = ev.percorsi?.map((p) => ({ ...p, tipologia: 'Gravel di GRAvellAND' })) ?? []
         } else {
           const kmMax = ev.percorsi?.length > 0 ? Math.max(...ev.percorsi.map((p) => p.km ?? 0)) : null
           ev.tipologia = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
