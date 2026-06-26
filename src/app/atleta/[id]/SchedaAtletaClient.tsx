@@ -59,6 +59,45 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
   const anno = new Date().getFullYear()
   const categoriaLabel = atleta.categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'
 
+  // Statistiche aggregate
+  const eventiOrdinati = [...(eventi ?? [])].sort((a, b) => a.data.localeCompare(b.data))
+  const kmTotali = Math.round(eventiOrdinati.reduce((s, e) => s + (e.completato ? e.km : e.km_effettivi ?? 0), 0))
+  const dislivelloTotale = eventiOrdinati.reduce((s, e) => s + (e.dislivello_m ?? 0), 0)
+  const eventiCompletati = eventiOrdinati.filter((e) => e.completato).length
+
+  // Dati grafico punti cumulativi
+  const puntiCumulativi: { data: string; punti: number }[] = []
+  let acc = 0
+  for (const e of eventiOrdinati) {
+    acc += e.punti
+    puntiCumulativi.push({ data: e.data, punti: acc })
+  }
+
+  function GraficoPunti() {
+    if (puntiCumulativi.length < 2) return null
+    const W = 320; const H = 80; const PAD = 8
+    const maxP = Math.max(...puntiCumulativi.map((p) => p.punti))
+    const pts = puntiCumulativi.map((p, i) => {
+      const x = PAD + (i / (puntiCumulativi.length - 1)) * (W - PAD * 2)
+      const y = H - PAD - ((p.punti / maxP) * (H - PAD * 2))
+      return `${x},${y}`
+    })
+    const lastPt = pts[pts.length - 1].split(',')
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
+        <polyline
+          points={pts.join(' ')}
+          fill="none"
+          stroke="#FF5500"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx={lastPt[0]} cy={lastPt[1]} r="4" fill="#FF5500" />
+      </svg>
+    )
+  }
+
   return (
     <PageShell title="" backHref="/classifica" backLabel="← Classifica">
       <div>
@@ -121,6 +160,39 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
           {finisher && (
             <div className="text-center text-sm text-orange-500 font-semibold mt-1">
               Soglia Finisher raggiunta! 🎉
+            </div>
+          )}
+
+          {/* Statistiche stagione */}
+          {canSeeEvents && eventi && eventi.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Statistiche stagione</div>
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="text-xl font-bold text-gray-900">{kmTotali.toLocaleString('it-IT')}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">km totali</div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="text-xl font-bold text-gray-900">{dislivelloTotale.toLocaleString('it-IT')}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">m dislivello</div>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="text-xl font-bold text-gray-900">{eventiCompletati}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">completati</div>
+                </div>
+              </div>
+
+              {/* Grafico punti cumulativi */}
+              {puntiCumulativi.length >= 2 && (
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">Andamento punti</div>
+                  <GraficoPunti />
+                  <div className="flex justify-between text-xs text-gray-300 mt-0.5">
+                    <span>{new Date(eventiOrdinati[0].data + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
+                    <span>{new Date(eventiOrdinati[eventiOrdinati.length - 1].data + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
