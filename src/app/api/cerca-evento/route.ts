@@ -168,17 +168,26 @@ ${textResults}`
         }
       }
 
-      // Regola Randonnée: etichetta in base ai km del percorso
-      const percorsiCorrotti = ev.percorsi.map((p) => ({
-        ...p,
-        tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km),
-      }))
+      // Regola Randonnée: assegna la categoria per ogni percorso in base ai suoi km specifici
+      const isRandonnee =
+        ev.tipologia?.toLowerCase().includes('randonn') ||
+        ev.nome?.toLowerCase().includes('randonn') ||
+        ev.url?.toLowerCase().includes('audax')
 
-      // Tipologia evento = quella del percorso principale (il più lungo)
+      const percorsiCorrotti = ev.percorsi.map((p) => {
+        if (p.km != null && (isRandonnee || p.tipologia?.toLowerCase().includes('randonn'))) {
+          return { ...p, tipologia: p.km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km' }
+        }
+        return { ...p, tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km) }
+      })
+
+      // Tipologia evento = quella del percorso più lungo
       const kmMax = percorsiCorrotti.length > 0
         ? Math.max(...percorsiCorrotti.map((p) => p.km ?? 0))
         : null
-      const tipologiaEvento = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
+      const tipologiaEvento = isRandonnee && kmMax != null
+        ? (kmMax <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km')
+        : (correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia)
 
       return { ...ev, tipologia: tipologiaEvento, percorsi: percorsiCorrotti }
     })

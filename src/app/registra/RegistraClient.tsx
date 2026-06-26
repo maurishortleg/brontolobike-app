@@ -297,6 +297,7 @@ export default function RegistraClient({
       nome_percorso: pc.nome_percorso.trim() || 'Percorso',
       km: parseFloat(pc.km) || 0,
       dislivello_m: parseInt(pc.dislivello_m) || 0,
+      tipologia_id: pc.tipologia_id || null,
     }))
     const { data: percorsiCreati, error: errPercorsi } = await supabase
       .from('percorsi')

@@ -168,11 +168,24 @@ ${textResults}`
           ev.percorsi = ev.percorsi?.map((p) => ({ ...p, tipologia: 'Gravel di GRAvellAND' })) ?? []
         } else {
           const kmMax = ev.percorsi?.length > 0 ? Math.max(...ev.percorsi.map((p) => p.km ?? 0)) : null
-          ev.tipologia = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
-          ev.percorsi = ev.percorsi?.map((p) => ({
-            ...p,
-            tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km) ?? p.tipologia,
-          })) ?? []
+          // Determina se è un evento Randonnée (da tipologia, nome evento o fonte Audax)
+          const isRandonnee =
+            ev.tipologia?.toLowerCase().includes('randonn') ||
+            ev.nome?.toLowerCase().includes('randonn') ||
+            fonte.nome.toLowerCase().includes('audax') ||
+            fonte.dominio.includes('audaxitalia')
+          if (isRandonnee && kmMax != null) {
+            ev.tipologia = kmMax <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
+          } else {
+            ev.tipologia = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
+          }
+          // Per ogni percorso: se Randonnée assegna la categoria in base ai km specifici del percorso
+          ev.percorsi = ev.percorsi?.map((p) => {
+            if (p.km != null && (isRandonnee || p.tipologia?.toLowerCase().includes('randonn'))) {
+              return { ...p, tipologia: p.km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km' }
+            }
+            return { ...p, tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km) ?? p.tipologia }
+          }) ?? []
         }
 
         const { data: esistente } = await supabase
