@@ -14,20 +14,37 @@ const MESI = [
   'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
 ]
 
+function colorePerTipologia(tipologia: string): string {
+  const t = tipologia.toLowerCase()
+  if (t.includes('gravel') || t.includes('brevetto permanente gravel')) return '#D8FF00'
+  if (t.includes('mtb'))                                                  return '#22c55e'
+  if (t.includes('randonn') || t.includes('brevetto permanente strada') || t.includes('percorso con credenziale')) return '#3b82f6'
+  if (t.includes('gran') || t.includes('fondo') || t.includes('crit'))   return '#FF5500'
+  if (t.includes('trail'))                                                return '#a855f7'
+  if (t.includes('ciclocross'))                                           return '#ef4444'
+  if (t.includes('pedalata'))                                             return '#14b8a6'
+  if (t.includes('uva fragola') || t.includes('brontolo') || t.includes('camp')) return '#FF006E'
+  return '#9ca3af' // grigio default
+}
+
 export default function Calendario({ onDataSelezionata, dataSelezionata, apiPallini = '/api/eventi-calendario' }: Props) {
   const oggi = new Date()
   const [anno, setAnno] = useState(oggi.getFullYear())
-  const [mese, setMese] = useState(oggi.getMonth()) // 0-based
+  const [mese, setMese] = useState(oggi.getMonth())
   const [giorniConEventi, setGiorniConEventi] = useState<Set<string>>(new Set())
+  const [tipologiePerGiorno, setTipologiePerGiorno] = useState<Record<string, string>>({})
 
   const meseStr = `${anno}-${String(mese + 1).padStart(2, '0')}`
 
   useEffect(() => {
     fetch(`${apiPallini}?mese=${meseStr}`)
       .then((r) => r.json())
-      .then((d) => setGiorniConEventi(new Set(d.giorni ?? [])))
-      .catch(() => setGiorniConEventi(new Set()))
-  }, [meseStr])
+      .then((d) => {
+        setGiorniConEventi(new Set(d.giorni ?? []))
+        setTipologiePerGiorno(d.tipologie ?? {})
+      })
+      .catch(() => { setGiorniConEventi(new Set()); setTipologiePerGiorno({}) })
+  }, [meseStr, apiPallini])
 
   function mesePrecedente() {
     if (mese === 0) { setMese(11); setAnno(a => a - 1) }
@@ -39,19 +56,15 @@ export default function Calendario({ onDataSelezionata, dataSelezionata, apiPall
     else setMese(m => m + 1)
   }
 
-  // Costruisce la griglia del mese (celle vuote + giorni)
   function costruisciGriglia() {
     const primoGiorno = new Date(anno, mese, 1)
     const ultimoGiorno = new Date(anno, mese + 1, 0)
-    // Lunedì = 0, Domenica = 6
     const offsetInizio = (primoGiorno.getDay() + 6) % 7
     const totaleDays = ultimoGiorno.getDate()
-
     const celle: (number | null)[] = [
       ...Array(offsetInizio).fill(null),
       ...Array.from({ length: totaleDays }, (_, i) => i + 1),
     ]
-    // Padda a multiplo di 7
     while (celle.length % 7 !== 0) celle.push(null)
     return celle
   }
@@ -83,9 +96,7 @@ export default function Calendario({ onDataSelezionata, dataSelezionata, apiPall
       {/* Intestazione giorni */}
       <div className="grid grid-cols-7 mb-1">
         {GIORNI.map((g) => (
-          <div key={g} className="text-center text-xs text-gray-400 font-medium py-1">
-            {g}
-          </div>
+          <div key={g} className="text-center text-xs text-gray-400 font-medium py-1">{g}</div>
         ))}
       </div>
 
@@ -98,6 +109,8 @@ export default function Calendario({ onDataSelezionata, dataSelezionata, apiPall
           const isOggi = dataStr === oggiStr
           const isSelezionato = dataStr === dataSelezionata
           const haEventi = giorniConEventi.has(dataStr)
+          const tipologia = tipologiePerGiorno[dataStr] ?? ''
+          const colore = haEventi ? colorePerTipologia(tipologia) : ''
 
           return (
             <button
@@ -111,7 +124,10 @@ export default function Calendario({ onDataSelezionata, dataSelezionata, apiPall
             >
               {giorno}
               {haEventi && (
-                <span className={`absolute bottom-1 w-1 h-1 rounded-full ${isSelezionato ? 'bg-white' : 'bg-orange-400'}`} />
+                <span
+                  className="absolute bottom-1 w-1.5 h-1.5 rounded-full"
+                  style={{ background: isSelezionato ? '#fff' : colore }}
+                />
               )}
             </button>
           )
