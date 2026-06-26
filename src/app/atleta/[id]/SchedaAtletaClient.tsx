@@ -73,26 +73,54 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
     puntiCumulativi.push({ data: e.data, punti: acc })
   }
 
+  // Ultima domenica di ottobre dell'anno corrente
+  function ultimaDomenicaOttobre(y: number): Date {
+    const d = new Date(y, 10, 0) // 31 ottobre
+    d.setDate(d.getDate() - ((d.getDay() + 1) % 7)) // vai indietro fino a domenica
+    return d
+  }
+  const scadenza = ultimaDomenicaOttobre(anno)
+  const oggi = new Date()
+  oggi.setHours(0, 0, 0, 0)
+  const giorniRimasti = Math.max(0, Math.ceil((scadenza.getTime() - oggi.getTime()) / 86400000))
+  const settimaneRimaste = giorniRimasti / 7
+  const puntiMancanti = Math.max(0, sogliaFinisher - puntiTotali)
+  const puntiSettimanaNecessari = settimaneRimaste > 0 ? Math.ceil(puntiMancanti / settimaneRimaste) : puntiMancanti
+
   function GraficoPunti() {
-    if (puntiCumulativi.length < 2) return null
-    const W = 320; const H = 80; const PAD = 8
-    const maxP = Math.max(...puntiCumulativi.map((p) => p.punti))
-    const pts = puntiCumulativi.map((p, i) => {
-      const x = PAD + (i / (puntiCumulativi.length - 1)) * (W - PAD * 2)
-      const y = H - PAD - ((p.punti / maxP) * (H - PAD * 2))
-      return `${x},${y}`
-    })
+    if (puntiCumulativi.length < 1) return null
+    const W = 320; const H = 100; const PAD = 10; const PAD_R = 48
+    const maxP = Math.max(...puntiCumulativi.map((p) => p.punti), sogliaFinisher)
+    const toX = (i: number) => PAD + (i / Math.max(puntiCumulativi.length - 1, 1)) * (W - PAD - PAD_R)
+    const toY = (p: number) => H - PAD - (p / maxP) * (H - PAD * 2)
+
+    const pts = puntiCumulativi.map((p, i) => `${toX(i)},${toY(p.punti)}`)
     const lastPt = pts[pts.length - 1].split(',')
+    const sogliaNormY = toY(sogliaFinisher)
+    const giaFinisher = puntiTotali >= sogliaFinisher
+
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80 }}>
-        <polyline
-          points={pts.join(' ')}
-          fill="none"
-          stroke="#FF5500"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 100 }}>
+        {/* Linea soglia finisher */}
+        <line x1={PAD} y1={sogliaNormY} x2={W - PAD_R + 4} y2={sogliaNormY}
+          stroke={giaFinisher ? '#22c55e' : '#d1d5db'} strokeWidth="1.5" strokeDasharray="4 3" />
+        <text x={W - PAD_R + 7} y={sogliaNormY + 4} fontSize="9" fill={giaFinisher ? '#22c55e' : '#9ca3af'} fontWeight="600">
+          {(sogliaFinisher / 1000).toFixed(0)}K
+        </text>
+
+        {/* Area sotto la curva */}
+        {puntiCumulativi.length > 1 && (
+          <polygon
+            points={`${toX(0)},${H - PAD} ${pts.join(' ')} ${toX(puntiCumulativi.length - 1)},${H - PAD}`}
+            fill="rgba(255,85,0,0.08)"
+          />
+        )}
+
+        {/* Linea punti */}
+        <polyline points={pts.join(' ')} fill="none" stroke="#FF5500"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Punto finale */}
         <circle cx={lastPt[0]} cy={lastPt[1]} r="4" fill="#FF5500" />
       </svg>
     )
@@ -183,16 +211,42 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
               </div>
 
               {/* Grafico punti cumulativi */}
-              {puntiCumulativi.length >= 2 && (
-                <div>
-                  <div className="text-xs text-gray-400 mb-1">Andamento punti</div>
-                  <GraficoPunti />
-                  <div className="flex justify-between text-xs text-gray-300 mt-0.5">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-400">Andamento punti</span>
+                  <span className="text-xs text-gray-400">
+                    Finisher: <span className="font-semibold text-gray-600">{sogliaFinisher.toLocaleString('it-IT')} pt</span>
+                  </span>
+                </div>
+                <GraficoPunti />
+                {puntiCumulativi.length >= 2 && (
+                  <div className="flex justify-between text-xs text-gray-300 mt-0.5 mb-3">
                     <span>{new Date(eventiOrdinati[0].data + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
                     <span>{new Date(eventiOrdinati[eventiOrdinati.length - 1].data + 'T12:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}</span>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Info finisher */}
+                {!finisher ? (
+                  <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 flex flex-col gap-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Punti mancanti</span>
+                      <span className="font-bold text-orange-500">{puntiMancanti.toLocaleString('it-IT')} pt</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Ritmo necessario</span>
+                      <span className="font-bold text-orange-500">{puntiSettimanaNecessari.toLocaleString('it-IT')} pt/settimana</span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      Scadenza: {scadenza.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} · {giorniRimasti} giorni rimanenti
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center text-sm font-semibold text-green-600">
+                    Soglia Finisher raggiunta!
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
