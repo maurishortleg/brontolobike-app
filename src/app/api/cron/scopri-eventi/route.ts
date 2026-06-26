@@ -102,27 +102,30 @@ export async function GET(req: NextRequest) {
         .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
         .join('\n\n---\n\n')
 
-      const prompt = `Dai seguenti risultati del sito "${fonte.nome}" (${fonte.url}), estrai tutti gli eventi ciclistici del ${ANNO} che si svolgono in ITALIA.
+      const REGIONI = 'Val d\'Aosta, Piemonte, Liguria, Lombardia, Veneto, Trentino Alto Adige, Friuli Venezia Giulia, Emilia Romagna, Toscana, Marche, Umbria, Abruzzo, Molise, Lazio'
+
+      const prompt = `Dai seguenti risultati del sito "${fonte.nome}" (${fonte.url}), estrai gli eventi ciclistici del ${ANNO} che si svolgono nelle seguenti regioni italiane: ${REGIONI}.
 
 Per ogni evento crea un oggetto con:
 - nome: nome completo e ufficiale dell'evento
 - data: data inizio YYYY-MM-DD, null se non trovata
 - data_fine: data fine YYYY-MM-DD per eventi multi-giorno, null altrimenti
-- luogo: città o paese di partenza in Italia, null se non trovato
+- luogo: città o paese di partenza, null se non trovato
 - tipologia: scegli da: ${tipologieStr} — oppure null
 - url: URL diretto alla pagina specifica dell'evento (non homepage né calendario generale)
 - percorsi: array con TUTTI i percorsi disponibili dell'evento, ognuno con:
     { nome (nome ufficiale del percorso), km (numero intero), dislivello (numero intero o null), tipologia (dalla lista o null) }
 
 Regole IMPORTANTI:
-- Includi SOLO eventi in Italia del ${ANNO} o futuri (escludi eventi già passati o all'estero)
+- Includi SOLO eventi nelle regioni elencate: ${REGIONI}. Escludi tutto il Sud Italia (Campania, Puglia, Basilicata, Calabria, Sicilia, Sardegna)
+- Includi solo eventi del ${ANNO} o futuri (escludi eventi già passati)
 - Cerca TUTTI i percorsi: spesso un evento ha 3-5 distanze diverse (es. 60km, 80km, 110km, 160km) — includile tutte
 - I km e il dislivello possono essere nel testo, nelle tabelle o nelle descrizioni dei percorsi
 - Se lo stesso evento appare più volte, tienilo una volta sola con tutti i percorsi trovati
 - Per GravelLand usa sempre tipologia "Gravel di GRAvellAND"
-- Per Audax/brevetti usa "Randonnée fino a 120Km" o "Randonnée oltre i 120Km" in base ai km del percorso
+- Per Randonnée/Audax: OGNI percorso DEVE avere tipologia "Randonnée fino a 120Km" se km ≤ 120, altrimenti "Randonnée oltre i 120Km"
 
-Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi italiani restituisci [].
+Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi nelle regioni indicate restituisci [].
 
 RISULTATI:
 ${textResults}`
