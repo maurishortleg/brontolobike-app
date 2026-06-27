@@ -36,6 +36,7 @@ type EventoTrovato = {
   tipologia: string | null
   url: string
   percorsi: PercorsoTrovato[]
+  immagine_url?: string | null
 }
 
 export default function RegistraClient({
@@ -466,8 +467,17 @@ export default function RegistraClient({
                 {listaVisibile.map((ev, i) => (
                   <div
                     key={i}
-                    className="border border-gray-200 rounded-xl p-4"
+                    className="border border-gray-200 rounded-xl overflow-hidden"
                   >
+                    {ev.immagine_url && (
+                      <img
+                        src={ev.immagine_url}
+                        alt={ev.nome}
+                        className="w-full h-32 object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    )}
+                    <div className="p-4">
                     <div className="font-semibold text-gray-900 mb-0.5 leading-tight">{ev.nome}</div>
                     <div className="text-sm text-gray-700 flex flex-wrap gap-3 mb-3">
                       {ev.data && (
@@ -517,6 +527,7 @@ export default function RegistraClient({
                         Seleziona evento →
                       </button>
                     )}
+                    </div>
                   </div>
                 ))}
             </div>

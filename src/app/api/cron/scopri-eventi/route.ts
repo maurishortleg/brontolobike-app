@@ -71,6 +71,7 @@ export async function GET(req: NextRequest) {
       // Cerca eventi sul sito tramite Tavily
       // Esegue le query in sequenza, si ferma alla prima che restituisce risultati
       let results: { title: string; url: string; content: string }[] = []
+      let images: { url: string }[] = []
       for (const query of fonte.queries) {
         const tavilyRes = await fetch('https://api.tavily.com/search', {
           method: 'POST',
@@ -81,15 +82,18 @@ export async function GET(req: NextRequest) {
             search_depth: 'basic',
             max_results: 8,
             include_answer: false,
+            include_images: true,
             include_domains: [fonte.dominio],
           }),
         })
         if (!tavilyRes.ok) continue
         const d = await tavilyRes.json()
         const nuovi: { title: string; url: string; content: string }[] = d.results ?? []
+        const nuoveImg: { url: string }[] = d.images ?? []
         // Aggiunge risultati non duplicati per URL
         const urlEsistenti = new Set(results.map((r) => r.url))
         results = [...results, ...nuovi.filter((r) => !urlEsistenti.has(r.url))]
+        images = [...images, ...nuoveImg]
         if (results.length >= 8) break
       }
 
@@ -194,6 +198,9 @@ ${textResults}`
         const { data: esistente } = await supabase
           .from('eventi_ricercati').select('id').ilike('nome', ev.nome.trim()).maybeSingle()
 
+        // Prima immagine dall'array images di Tavily
+        const immagineUrl = images[0]?.url ?? null
+
         if (!esistente) {
           await supabase.from('eventi_ricercati').insert({
             nome: ev.nome.trim(),
@@ -203,9 +210,16 @@ ${textResults}`
             tipologia: ev.tipologia ?? null,
             url: ev.url ?? fonte.url,
             percorsi: ev.percorsi ?? [],
+            immagine_url: immagineUrl,
             attivo: true,
           })
           nuoviFonte++
+        } else if (immagineUrl) {
+          // Aggiorna immagine se mancante
+          await supabase.from('eventi_ricercati')
+            .update({ immagine_url: immagineUrl })
+            .eq('id', esistente.id)
+            .is('immagine_url', null)
         }
       }))
 

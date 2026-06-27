@@ -1,8 +1,188 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import PageShell from '@/components/PageShell'
+
+// ── Tipi confronto ─────────────────────────────────────────────
+type AtletaConfronto = { id: string; nome: string; mensile: Record<string, number>; trimestrale: Record<string, number> }
+type AtletaMinimo = { id: string; nome: string }
+
+const COLORI_CONFRONTO = ['#FF5500', '#0055CC', '#D8FF00']
+
+function GraficoConfronto({ atleti, periodo }: { atleti: AtletaConfronto[]; periodo: 'mensile' | 'trimestrale' }) {
+  const MESI_IT = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
+  const anno = new Date().getFullYear()
+
+  let labels: string[]
+  let getData: (a: AtletaConfronto, label: string) => number
+
+  if (periodo === 'mensile') {
+    labels = Array.from({ length: 12 }, (_, i) => `${anno}-${String(i + 1).padStart(2, '0')}`)
+    getData = (a, l) => a.mensile[l] ?? 0
+  } else {
+    labels = ['Q1', 'Q2', 'Q3', 'Q4']
+    getData = (a, l) => a.trimestrale[l] ?? 0
+  }
+
+  const maxVal = Math.max(...atleti.flatMap((a) => labels.map((l) => getData(a, l))), 1)
+  const W = 320; const H = 160; const PAD_B = 24; const PAD_T = 8; const PAD_L = 8; const PAD_R = 8
+  const barAreaW = W - PAD_L - PAD_R
+  const gruppoW = barAreaW / labels.length
+  const barW = Math.min(14, (gruppoW / atleti.length) - 2)
+  const chartH = H - PAD_T - PAD_B
+
+  const labelDisplay = periodo === 'mensile'
+    ? (l: string) => MESI_IT[parseInt(l.slice(5, 7)) - 1]
+    : (l: string) => l
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 160 }}>
+      {/* Griglia */}
+      {[0.25, 0.5, 0.75, 1].map((f) => {
+        const y = PAD_T + chartH * (1 - f)
+        return <line key={f} x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#f0f0f0" strokeWidth="1" />
+      })}
+
+      {labels.map((label, gi) => {
+        const cx = PAD_L + gruppoW * gi + gruppoW / 2
+        const totalBarW = barW * atleti.length + (atleti.length - 1) * 2
+        return (
+          <g key={label}>
+            {atleti.map((a, ai) => {
+              const val = getData(a, label)
+              const barH = (val / maxVal) * chartH
+              const x = cx - totalBarW / 2 + ai * (barW + 2)
+              const y = PAD_T + chartH - barH
+              return (
+                <g key={a.id}>
+                  <rect x={x} y={y} width={barW} height={Math.max(barH, 1)} fill={COLORI_CONFRONTO[ai]} rx="2" opacity={val === 0 ? 0.15 : 1} />
+                  {val > 0 && barH > 14 && (
+                    <text x={x + barW / 2} y={y + 10} textAnchor="middle" fontSize="7" fill="#fff" fontWeight="600">
+                      {val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
+            <text x={cx} y={H - 6} textAnchor="middle" fontSize="8" fill="#9ca3af">
+              {labelDisplay(label)}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+function SezioneConfronto({ atletaId, atletaNome, categoria }: { atletaId: string; atletaNome: string; categoria: string }) {
+  const [periodo, setPeriodo] = useState<'mensile' | 'trimestrale'>('trimestrale')
+  const [tuttiAtleti, setTuttiAtleti] = useState<AtletaMinimo[]>([])
+  const [selezionati, setSelezionati] = useState<[string, string]>(['', ''])
+  const [dati, setDati] = useState<AtletaConfronto[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/classifica?categoria=${categoria}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const lista: AtletaMinimo[] = (d.classifica ?? [])
+          .filter((a: any) => a.id !== atletaId)
+          .map((a: any) => ({ id: a.id, nome: a.nome }))
+        setTuttiAtleti(lista)
+      })
+      .catch(() => {})
+  }, [atletaId])
+
+  const caricaConfronto = useCallback(async () => {
+    const ids = [atletaId, ...selezionati.filter(Boolean)]
+    if (ids.length < 2) return
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/atleta/confronto?ids=${ids.join(',')}`)
+      const data = await res.json()
+      setDati(data.atleti ?? null)
+    } finally {
+      setLoading(false)
+    }
+  }, [atletaId, selezionati])
+
+  const atletiDaVisualizzare = dati ?? [{ id: atletaId, nome: atletaNome, mensile: {}, trimestrale: {} }]
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-100">
+      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Confronto atleti</div>
+
+      {/* Legenda colori */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {[atletaNome, selezionati[0], selezionati[1]].map((nome, i) => {
+          if (!nome && i > 0) return null
+          const label = nome ? tuttiAtleti.find((a) => a.id === nome)?.nome ?? (i === 0 ? nome : '') : ''
+          const display = i === 0 ? atletaNome : label
+          if (!display) return null
+          return (
+            <div key={i} className="flex items-center gap-1 text-xs text-gray-600">
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ background: COLORI_CONFRONTO[i] }} />
+              <span>{display}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Selettori atleti */}
+      <div className="flex flex-col gap-2 mb-3">
+        {[0, 1].map((i) => (
+          <select
+            key={i}
+            value={selezionati[i]}
+            onChange={(e) => {
+              const nuovo = [...selezionati] as [string, string]
+              nuovo[i] = e.target.value
+              setSelezionati(nuovo)
+            }}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 bg-white focus:outline-none focus:border-orange-400"
+          >
+            <option value="">— Atleta {i + 1} —</option>
+            {tuttiAtleti
+              .filter((a) => a.id !== selezionati[i === 0 ? 1 : 0])
+              .map((a) => (
+                <option key={a.id} value={a.id}>{a.nome}</option>
+              ))}
+          </select>
+        ))}
+      </div>
+
+      {/* Toggle periodo */}
+      <div className="flex gap-1 mb-3 bg-gray-100 rounded-lg p-1">
+        {(['trimestrale', 'mensile'] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => setPeriodo(p)}
+            className={`flex-1 text-xs font-medium py-1.5 rounded-md transition-colors capitalize ${
+              periodo === p ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Bottone confronta */}
+      <button
+        onClick={caricaConfronto}
+        disabled={!selezionati[0] && !selezionati[1]}
+        className="w-full text-sm font-semibold bg-orange-500 text-white rounded-xl py-2 mb-4 disabled:opacity-40 disabled:cursor-not-allowed active:bg-orange-600 transition-colors"
+      >
+        {loading ? 'Caricamento...' : 'Confronta'}
+      </button>
+
+      {/* Grafico */}
+      {dati && (
+        <GraficoConfronto atleti={atletiDaVisualizzare} periodo={periodo} />
+      )}
+    </div>
+  )
+}
 
 type Evento = {
   data: string
@@ -57,7 +237,7 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
 
   const { atleta, puntiTotali, posizione, finisher, progressione, sogliaFinisher, isMe, canSeeEvents, eventi } = scheda
   const anno = new Date().getFullYear()
-  const categoriaLabel = atleta.categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'
+  const categoriaLabel = atleta.categoria === 'AMATORI' ? 'Amatori TEST' : 'Cicloturisti TEST'
 
   // Statistiche aggregate
   const eventiOrdinati = [...(eventi ?? [])].sort((a, b) => a.data.localeCompare(b.data))
@@ -75,8 +255,8 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
 
   // Ultima domenica di ottobre dell'anno corrente
   function ultimaDomenicaOttobre(y: number): Date {
-    const d = new Date(y, 10, 0) // 31 ottobre
-    d.setDate(d.getDate() - ((d.getDay() + 1) % 7)) // vai indietro fino a domenica
+    const d = new Date(y, 9, 31) // 31 ottobre
+    while (d.getDay() !== 0) d.setDate(d.getDate() - 1)
     return d
   }
   const scadenza = ultimaDomenicaOttobre(anno)
@@ -250,6 +430,13 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
             </div>
           )}
         </div>
+
+        {/* Confronto atleti — solo per l'atleta stesso */}
+        {isMe && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
+            <SezioneConfronto atletaId={atleta.id} atletaNome={atleta.nome} categoria={atleta.categoria} />
+          </div>
+        )}
 
         {/* Storico eventi — visibile all'atleta e all'admin */}
         {canSeeEvents && eventi && (

@@ -37,6 +37,7 @@ export type EventoTrovato = {
   tipologia: string | null
   url: string
   percorsi: PercorsoTrovato[]
+  immagine_url?: string | null
 }
 
 function dominioUrl(url: string): string {
