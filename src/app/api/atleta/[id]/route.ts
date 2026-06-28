@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { isAdmin } from '@/lib/is-admin'
+import { ultimaDomenicaOttobre } from '@/lib/date-utils'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -12,6 +13,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const anno = new Date().getFullYear()
   const inizioAnno = `${anno}-01-01`
+  const scadenza = ultimaDomenicaOttobre(anno)
+  const scadenzaStr = scadenza.toISOString().split('T')[0]
 
   // 1. Dati atleta
   const { data: atletaList } = await supabase
@@ -136,5 +139,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     isMe,
     canSeeEvents,
     eventi: storicoEventi,
+    scadenza: scadenzaStr,
   })
 }

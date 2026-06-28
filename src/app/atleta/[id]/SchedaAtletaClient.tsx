@@ -208,6 +208,7 @@ type Scheda = {
   isMe: boolean
   canSeeEvents: boolean
   eventi: Evento[] | null
+  scadenza: string
 }
 
 export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
@@ -235,7 +236,7 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
     </div>
   )
 
-  const { atleta, puntiTotali, posizione, finisher, progressione, sogliaFinisher, isMe, canSeeEvents, eventi } = scheda
+  const { atleta, puntiTotali, posizione, finisher, progressione, sogliaFinisher, isMe, canSeeEvents, eventi, scadenza } = scheda
   const anno = new Date().getFullYear()
   const categoriaLabel = atleta.categoria === 'AMATORI' ? 'Amatori TEST' : 'Cicloturisti TEST'
 
@@ -253,16 +254,10 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
     puntiCumulativi.push({ data: e.data, punti: acc })
   }
 
-  // Ultima domenica di ottobre dell'anno corrente
-  function ultimaDomenicaOttobre(y: number): Date {
-    const d = new Date(y, 9, 31) // 31 ottobre
-    while (d.getDay() !== 0) d.setDate(d.getDate() - 1)
-    return d
-  }
-  const scadenza = ultimaDomenicaOttobre(anno)
+  const scadenzaDate = new Date(scadenza + 'T12:00:00')
   const oggi = new Date()
   oggi.setHours(0, 0, 0, 0)
-  const giorniRimasti = Math.max(0, Math.ceil((scadenza.getTime() - oggi.getTime()) / 86400000))
+  const giorniRimasti = Math.max(0, Math.ceil((scadenzaDate.getTime() - oggi.getTime()) / 86400000))
   const settimaneRimaste = giorniRimasti / 7
   const puntiMancanti = Math.max(0, sogliaFinisher - puntiTotali)
   const puntiSettimanaNecessari = settimaneRimaste > 0 ? Math.ceil(puntiMancanti / settimaneRimaste) : puntiMancanti
@@ -418,7 +413,7 @@ export default function SchedaAtletaClient({ atletaId }: { atletaId: string }) {
                       <span className="font-bold text-orange-500">{puntiSettimanaNecessari.toLocaleString('it-IT')} pt/settimana</span>
                     </div>
                     <div className="text-xs text-gray-400 mt-0.5">
-                      Scadenza: {scadenza.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} · {giorniRimasti} giorni rimanenti
+                      Scadenza: {scadenzaDate.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} · {giorniRimasti} giorni rimanenti
                     </div>
                   </div>
                 ) : (

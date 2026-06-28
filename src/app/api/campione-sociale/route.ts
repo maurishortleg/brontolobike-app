@@ -1,10 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
-
-function ultimaDomenicaOttobre(anno: number): Date {
-  const d = new Date(anno, 9, 31)
-  while (d.getDay() !== 0) d.setDate(d.getDate() - 1)
-  return d
-}
+import { ultimaDomenicaOttobre } from '@/lib/date-utils'
 
 // GET /api/campione-sociale
 // Restituisce il campione solo se oggi è dopo l'ultima domenica di ottobre

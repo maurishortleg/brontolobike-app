@@ -24,6 +24,7 @@ type EventoCatalogo = {
   tipologia: string | null
   url: string
   percorsi: { nome: string; km: number; dislivello: number | null }[]
+  immagine_url?: string | null
 }
 
 export default function CalendarioClient() {
@@ -31,6 +32,7 @@ export default function CalendarioClient() {
   const [registrazioni, setRegistrazioni] = useState<Registrazione[]>([])
   const [eventiCatalogo, setEventiCatalogo] = useState<EventoCatalogo[]>([])
   const [loading, setLoading] = useState(false)
+  const [imgIngrandita, setImgIngrandita] = useState<string | null>(null)
 
   useEffect(() => {
     if (!dataSelezionata) { setRegistrazioni([]); setEventiCatalogo([]); return }
@@ -55,6 +57,19 @@ export default function CalendarioClient() {
 
   return (
     <PageShell title="Il mio calendario">
+      {/* Lightbox */}
+      {imgIngrandita && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setImgIngrandita(null)}
+        >
+          <img
+            src={imgIngrandita}
+            alt="Locandina evento"
+            className="max-w-full max-h-full rounded-xl shadow-2xl"
+          />
+        </div>
+      )}
       <div>
 
         <Calendario
@@ -115,40 +130,54 @@ export default function CalendarioClient() {
                 </h3>
                 <div className="flex flex-col gap-3">
                   {eventiCatalogo.map((ev) => (
-                    <div key={ev.id} className="bg-gray-50 rounded-xl border border-gray-100 p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-semibold text-gray-800 text-sm">{ev.nome}</div>
-                          {ev.luogo && (
-                            <div className="text-xs text-gray-400 mt-0.5">{ev.luogo}</div>
-                          )}
-                          {ev.percorsi?.length > 0 && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              {ev.percorsi.map((p, i) => (
-                                <span key={i}>
-                                  {i > 0 && ' · '}
-                                  {p.km} km{p.dislivello ? ` / ${p.dislivello} m ↑` : ''}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                    <div key={ev.id} className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-800 text-sm">{ev.nome}</div>
+                            {ev.luogo && (
+                              <div className="text-xs text-gray-400 mt-0.5">{ev.luogo}</div>
+                            )}
+                            {ev.percorsi?.length > 0 && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {ev.percorsi.map((p, i) => (
+                                  <span key={i}>
+                                    {i > 0 && ' · '}
+                                    {p.km} km{p.dislivello ? ` / ${p.dislivello} m ↑` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            {ev.tipologia && (
+                              <span className="text-xs bg-orange-50 text-orange-600 border border-orange-100 rounded-full px-2 py-0.5 whitespace-nowrap">
+                                {ev.tipologia}
+                              </span>
+                            )}
+                            {ev.immagine_url && (
+                              <button onClick={() => setImgIngrandita(ev.immagine_url!)}>
+                                <img
+                                  src={ev.immagine_url}
+                                  alt={ev.nome}
+                                  className="w-16 h-16 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        {ev.tipologia && (
-                          <span className="text-xs bg-orange-50 text-orange-600 border border-orange-100 rounded-full px-2 py-0.5 whitespace-nowrap shrink-0">
-                            {ev.tipologia}
-                          </span>
+                        {ev.url && (
+                          <a
+                            href={ev.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-500 hover:underline mt-2 inline-block"
+                          >
+                            Sito ufficiale →
+                          </a>
                         )}
                       </div>
-                      {ev.url && (
-                        <a
-                          href={ev.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-500 hover:underline mt-2 inline-block"
-                        >
-                          Sito ufficiale →
-                        </a>
-                      )}
                     </div>
                   ))}
                 </div>
