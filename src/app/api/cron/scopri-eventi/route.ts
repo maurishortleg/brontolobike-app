@@ -15,32 +15,88 @@ function dominioUrl(url: string): string {
   try { return new URL(url).hostname.replace('www.', '') } catch { return '' }
 }
 
-async function fetchOgImage(url: string): Promise<string | null> {
+async function fetchPagina(url: string): Promise<{ html: string; testo: string } | null> {
   if (!url) return null
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(8000),
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BrontoloBike-bot/1.0)' },
     })
     if (!res.ok) return null
     const html = await res.text()
-    const match =
-      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
-      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
-    if (!match) return null
-    const src = match[1]
-    if (src.startsWith('http')) return src
-    const base = new URL(url)
-    return new URL(src, base.origin).href
+    // Rimuove script/style, poi strip tag HTML
+    const testo = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 12000) // max 12k caratteri per non saturare il contesto Gemini
+    return { html, testo }
   } catch {
     return null
   }
+}
+
+function estraiOgImage(html: string, baseUrl: string): string | null {
+  const match =
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+  if (!match) return null
+  const src = match[1]
+  if (src.startsWith('http')) return src
+  try { return new URL(src, new URL(baseUrl).origin).href } catch { return null }
 }
 
 function correggiRandonnee(tipologia: string | null, km: number | null): string | null {
   if (!tipologia?.toLowerCase().includes('randonn')) return tipologia
   if (km == null) return tipologia
   return km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
+}
+
+type Percorso = { nome: string; km: number | null; dislivello: number | null; tipologia: string | null }
+
+async function arricchisciPercorsi(
+  ev: { nome: string; tipologia: string | null; percorsi: Percorso[] },
+  testoPageina: string,
+  tipologieStr: string,
+  googleKey: string,
+): Promise<Percorso[]> {
+  const prompt = `Dal testo della pagina web dell'evento ciclistico "${ev.nome}", estrai TUTTI i percorsi disponibili.
+
+Per ogni percorso crea un oggetto con:
+- nome: nome ufficiale del percorso
+- km: distanza in km (numero intero), null se non trovata
+- dislivello: dislivello in metri (numero intero), null se non trovato
+- tipologia: scegli da: ${tipologieStr} — oppure null
+
+Regole:
+- Cerca tutte le distanze (es. SHORT 200, CLASSIC 300, WILD 400, ecc.)
+- I km e il dislivello possono essere scritti come "300 km / 4600 D+" o simili
+- Restituisci SOLO un array JSON valido senza markdown
+
+TESTO PAGINA:
+${testoPageina}`
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        signal: AbortSignal.timeout(20000),
+      }
+    )
+    if (!res.ok) return ev.percorsi
+    const data = await res.json()
+    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+    const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+    const parsed = JSON.parse(cleaned)
+    return Array.isArray(parsed) ? parsed : ev.percorsi
+  } catch {
+    return ev.percorsi
+  }
 }
 
 export const maxDuration = 60
@@ -173,7 +229,7 @@ ${textResults}`
       let eventi: {
         nome: string; data: string | null; data_fine: string | null
         luogo: string | null; tipologia: string | null; url: string
-        percorsi: { nome: string; km: number; dislivello: number | null; tipologia: string | null }[]
+        percorsi: Percorso[]
       }[]
 
       try {
@@ -213,10 +269,18 @@ ${textResults}`
           }) ?? []
         }
 
-        const [{ data: esistente }, immagineUrl] = await Promise.all([
-          supabase.from('eventi_ricercati').select('id, immagine_url').ilike('nome', ev.nome.trim()).maybeSingle(),
-          fetchOgImage(ev.url ?? ''),
-        ])
+        // Fetch pagina evento: serve sia per og:image sia per arricchire percorsi mancanti
+        const percorsiIncompleti = !ev.percorsi?.length || ev.percorsi.some((p) => p.km == null)
+        const pagina = ev.url ? await fetchPagina(ev.url) : null
+        const immagineUrl = pagina ? estraiOgImage(pagina.html, ev.url) : null
+
+        if (percorsiIncompleti && pagina?.testo) {
+          const percorsiArricchiti = await arricchisciPercorsi(ev, pagina.testo, tipologieStr, googleKey)
+          if (percorsiArricchiti.length > 0) ev.percorsi = percorsiArricchiti
+        }
+
+        const { data: esistente } = await supabase
+          .from('eventi_ricercati').select('id, immagine_url').ilike('nome', ev.nome.trim()).maybeSingle()
 
         if (!esistente) {
           await supabase.from('eventi_ricercati').insert({
@@ -231,10 +295,14 @@ ${textResults}`
             attivo: true,
           })
           nuoviFonte++
-        } else if (immagineUrl && !esistente.immagine_url) {
-          await supabase.from('eventi_ricercati')
-            .update({ immagine_url: immagineUrl })
-            .eq('id', esistente.id)
+        } else {
+          // Aggiorna immagine e/o percorsi sull'evento esistente se mancanti
+          const aggiornamenti: Record<string, unknown> = {}
+          if (immagineUrl && !esistente.immagine_url) aggiornamenti.immagine_url = immagineUrl
+          if (percorsiIncompleti && ev.percorsi?.length) aggiornamenti.percorsi = ev.percorsi
+          if (Object.keys(aggiornamenti).length) {
+            await supabase.from('eventi_ricercati').update(aggiornamenti).eq('id', esistente.id)
+          }
         }
       }))
 
