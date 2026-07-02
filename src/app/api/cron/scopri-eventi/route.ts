@@ -240,8 +240,9 @@ ${textResults}`
         return { log: logFonte, nuovi: nuoviFonte }
       }
 
-      await Promise.all(eventi.map(async (ev) => {
-        if (!ev.nome?.trim()) return
+      // Elaborazione sequenziale per rispettare il rate limit di Gemini
+      for (const ev of eventi) {
+        if (!ev.nome?.trim()) continue
 
         const dominio = dominioUrl(ev.url ?? '')
         if (dominio === 'gravelland.it') {
@@ -249,7 +250,6 @@ ${textResults}`
           ev.percorsi = ev.percorsi?.map((p) => ({ ...p, tipologia: 'Gravel di GRAvellAND' })) ?? []
         } else {
           const kmMax = ev.percorsi?.length > 0 ? Math.max(...ev.percorsi.map((p) => p.km ?? 0)) : null
-          // Determina se è un evento Randonnée (da tipologia, nome evento o fonte Audax)
           const isRandonnee =
             ev.tipologia?.toLowerCase().includes('randonn') ||
             ev.nome?.toLowerCase().includes('randonn') ||
@@ -260,7 +260,6 @@ ${textResults}`
           } else {
             ev.tipologia = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
           }
-          // Per ogni percorso: se Randonnée assegna la categoria in base ai km specifici del percorso
           ev.percorsi = ev.percorsi?.map((p) => {
             if (p.km != null && (isRandonnee || p.tipologia?.toLowerCase().includes('randonn'))) {
               return { ...p, tipologia: p.km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km' }
@@ -269,12 +268,14 @@ ${textResults}`
           }) ?? []
         }
 
-        // Fetch pagina evento: serve sia per og:image sia per arricchire percorsi mancanti
+        // Fetch pagina evento: og:image + arricchimento percorsi se incompleti
         const percorsiIncompleti = !ev.percorsi?.length || ev.percorsi.some((p) => p.km == null)
         const pagina = ev.url ? await fetchPagina(ev.url) : null
         const immagineUrl = pagina ? estraiOgImage(pagina.html, ev.url) : null
 
         if (percorsiIncompleti && pagina?.testo) {
+          // Pausa prima della chiamata Gemini per evitare 429
+          await new Promise((r) => setTimeout(r, 1500))
           const percorsiArricchiti = await arricchisciPercorsi(ev, pagina.testo, tipologieStr, googleKey)
           if (percorsiArricchiti.length > 0) ev.percorsi = percorsiArricchiti
         }
@@ -296,7 +297,6 @@ ${textResults}`
           })
           nuoviFonte++
         } else {
-          // Aggiorna immagine e/o percorsi sull'evento esistente se mancanti
           const aggiornamenti: Record<string, unknown> = {}
           if (immagineUrl && !esistente.immagine_url) aggiornamenti.immagine_url = immagineUrl
           if (percorsiIncompleti && ev.percorsi?.length) aggiornamenti.percorsi = ev.percorsi
@@ -304,7 +304,7 @@ ${textResults}`
             await supabase.from('eventi_ricercati').update(aggiornamenti).eq('id', esistente.id)
           }
         }
-      }))
+      }
 
       logFonte.push(`✅ ${fonte.nome}: ${eventi.length} eventi trovati, ${nuoviFonte} nuovi`)
     } catch (e) {
