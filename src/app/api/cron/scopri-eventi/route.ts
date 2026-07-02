@@ -56,6 +56,30 @@ function correggiRandonnee(tipologia: string | null, km: number | null): string 
 
 type Percorso = { nome: string; km: number | null; dislivello: number | null; tipologia: string | null }
 
+async function geminiCall(googleKey: string, prompt: string, maxTentativi = 4): Promise<string> {
+  let attesa = 3000
+  for (let i = 0; i < maxTentativi; i++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        signal: AbortSignal.timeout(25000),
+      }
+    )
+    if (res.status === 429) {
+      if (i < maxTentativi - 1) await new Promise((r) => setTimeout(r, attesa))
+      attesa *= 2
+      continue
+    }
+    if (!res.ok) return ''
+    const data = await res.json()
+    return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+  }
+  return ''
+}
+
 async function arricchisciPercorsi(
   ev: { nome: string; tipologia: string | null; percorsi: Percorso[] },
   testoPageina: string,
@@ -79,18 +103,8 @@ TESTO PAGINA:
 ${testoPageina}`
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        signal: AbortSignal.timeout(20000),
-      }
-    )
-    if (!res.ok) return ev.percorsi
-    const data = await res.json()
-    const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+    const text = await geminiCall(googleKey, prompt)
+    if (!text) return ev.percorsi
     const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
     const parsed = JSON.parse(cleaned)
     return Array.isArray(parsed) ? parsed : ev.percorsi
@@ -208,22 +222,12 @@ Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi nelle 
 RISULTATI:
 ${textResults}`
 
-      const geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${googleKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        }
-      )
-
-      if (!geminiRes.ok) {
-        logFonte.push(`⚠️ ${fonte.nome}: errore Gemini ${geminiRes.status}`)
+      const geminiText = await geminiCall(googleKey, prompt)
+      if (!geminiText) {
+        logFonte.push(`⚠️ ${fonte.nome}: errore Gemini (nessuna risposta dopo retry)`)
         return { log: logFonte, nuovi: nuoviFonte }
       }
-
-      const geminiData = await geminiRes.json()
-      const text: string = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
+      const text = geminiText
       const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
 
       let eventi: {
