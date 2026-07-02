@@ -15,6 +15,28 @@ function dominioUrl(url: string): string {
   try { return new URL(url).hostname.replace('www.', '') } catch { return '' }
 }
 
+async function fetchOgImage(url: string): Promise<string | null> {
+  if (!url) return null
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BrontoloBike-bot/1.0)' },
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    const match =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+    if (!match) return null
+    const src = match[1]
+    if (src.startsWith('http')) return src
+    const base = new URL(url)
+    return new URL(src, base.origin).href
+  } catch {
+    return null
+  }
+}
+
 function correggiRandonnee(tipologia: string | null, km: number | null): string | null {
   if (!tipologia?.toLowerCase().includes('randonn')) return tipologia
   if (km == null) return tipologia
@@ -71,7 +93,6 @@ export async function GET(req: NextRequest) {
       // Cerca eventi sul sito tramite Tavily
       // Esegue le query in sequenza, si ferma alla prima che restituisce risultati
       let results: { title: string; url: string; content: string }[] = []
-      let images: { url: string }[] = []
       for (const query of fonte.queries) {
         const tavilyRes = await fetch('https://api.tavily.com/search', {
           method: 'POST',
@@ -82,18 +103,15 @@ export async function GET(req: NextRequest) {
             search_depth: 'basic',
             max_results: 8,
             include_answer: false,
-            include_images: true,
             include_domains: [fonte.dominio],
           }),
         })
         if (!tavilyRes.ok) continue
         const d = await tavilyRes.json()
         const nuovi: { title: string; url: string; content: string }[] = d.results ?? []
-        const nuoveImg: { url: string }[] = d.images ?? []
         // Aggiunge risultati non duplicati per URL
         const urlEsistenti = new Set(results.map((r) => r.url))
         results = [...results, ...nuovi.filter((r) => !urlEsistenti.has(r.url))]
-        images = [...images, ...nuoveImg]
         if (results.length >= 8) break
       }
 
@@ -195,11 +213,10 @@ ${textResults}`
           }) ?? []
         }
 
-        const { data: esistente } = await supabase
-          .from('eventi_ricercati').select('id').ilike('nome', ev.nome.trim()).maybeSingle()
-
-        // Prima immagine dall'array images di Tavily
-        const immagineUrl = images[0]?.url ?? null
+        const [{ data: esistente }, immagineUrl] = await Promise.all([
+          supabase.from('eventi_ricercati').select('id, immagine_url').ilike('nome', ev.nome.trim()).maybeSingle(),
+          fetchOgImage(ev.url ?? ''),
+        ])
 
         if (!esistente) {
           await supabase.from('eventi_ricercati').insert({
@@ -214,12 +231,10 @@ ${textResults}`
             attivo: true,
           })
           nuoviFonte++
-        } else if (immagineUrl) {
-          // Aggiorna immagine se mancante
+        } else if (immagineUrl && !esistente.immagine_url) {
           await supabase.from('eventi_ricercati')
             .update({ immagine_url: immagineUrl })
             .eq('id', esistente.id)
-            .is('immagine_url', null)
         }
       }))
 
