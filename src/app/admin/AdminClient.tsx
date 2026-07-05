@@ -192,9 +192,10 @@ export default function AdminClient() {
     try {
       const res = await fetch('/api/admin/backfill-percorsi')
       const data = await res.json()
-      setLogBackfill(data.log ?? [data.messaggio ?? 'Completato'])
-    } catch {
-      setLogBackfill(['❌ Errore di rete'])
+      if (data.error) setLogBackfill([`❌ ${data.error}`])
+      else setLogBackfill(data.log ?? [data.messaggio ?? 'Completato'])
+    } catch (e) {
+      setLogBackfill([`❌ Errore di rete: ${e}`])
     }
     setBackfilling(false)
   }
