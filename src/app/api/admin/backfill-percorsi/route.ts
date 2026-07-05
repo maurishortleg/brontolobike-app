@@ -57,7 +57,8 @@ async function geminiCall(googleKey: string, prompt: string): Promise<string> {
   return ''
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
+  try {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!isAdmin(user)) return Response.json({ error: 'Non autorizzato' }, { status: 403 })
@@ -135,4 +136,7 @@ ${testo}`
   if (rimanenti > 0) log.push(`ℹ️ ${rimanenti} eventi rimanenti — rilancia per continuare`)
 
   return Response.json({ messaggio: `${aggiornati} eventi aggiornati`, log })
+  } catch (e) {
+    return Response.json({ error: `Errore interno: ${e}` }, { status: 500 })
+  }
 }
