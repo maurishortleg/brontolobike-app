@@ -51,6 +51,8 @@ export default function AdminClient() {
   const [msgFonti, setMsgFonti] = useState('')
   const [lanciando, setLanciando] = useState(false)
   const [logRicerca, setLogRicerca] = useState<string[]>([])
+  const [backfilling, setBackfilling] = useState(false)
+  const [logBackfill, setLogBackfill] = useState<string[]>([])
 
   useEffect(() => {
     fetch('/api/admin/fonti').then((r) => r.json()).then((d) => setFonti(d.fonti ?? []))
@@ -182,6 +184,19 @@ export default function AdminClient() {
     }
     setLogRicerca((prev) => [...prev, '✅ Ricerca completata.'])
     setLanciando(false)
+  }
+
+  async function backfillPercorsi() {
+    setBackfilling(true)
+    setLogBackfill(['⏳ Analisi percorsi in corso (max 20 eventi per volta)...'])
+    try {
+      const res = await fetch('/api/admin/backfill-percorsi')
+      const data = await res.json()
+      setLogBackfill(data.log ?? [data.messaggio ?? 'Completato'])
+    } catch {
+      setLogBackfill(['❌ Errore di rete'])
+    }
+    setBackfilling(false)
   }
 
   async function eliminaFonte(id: number) {
@@ -329,14 +344,31 @@ export default function AdminClient() {
         <div className="bg-white rounded-2xl border border-gray-200 p-4 mt-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700">Siti fonte eventi</h2>
-            <button
-              onClick={lanciaRicerca}
-              disabled={lanciando}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 text-white disabled:opacity-50 hover:bg-orange-600 transition-colors"
-            >
-              {lanciando ? 'In corso...' : '▶ Lancia ricerca'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={backfillPercorsi}
+                disabled={backfilling || lanciando}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-500 text-white disabled:opacity-50 hover:bg-blue-600 transition-colors"
+              >
+                {backfilling ? 'Analisi...' : '🔧 Completa percorsi'}
+              </button>
+              <button
+                onClick={lanciaRicerca}
+                disabled={lanciando || backfilling}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-orange-500 text-white disabled:opacity-50 hover:bg-orange-600 transition-colors"
+              >
+                {lanciando ? 'In corso...' : '▶ Lancia ricerca'}
+              </button>
+            </div>
           </div>
+
+          {logBackfill.length > 0 && (
+            <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl p-3 flex flex-col gap-1">
+              {logBackfill.map((riga, i) => (
+                <div key={i} className="text-xs text-gray-700 font-mono">{riga}</div>
+              ))}
+            </div>
+          )}
 
           {logRicerca.length > 0 && (
             <div className="mb-4 bg-gray-50 border border-gray-100 rounded-xl p-3 flex flex-col gap-1">
