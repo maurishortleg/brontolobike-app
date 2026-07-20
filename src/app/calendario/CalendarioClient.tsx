@@ -23,7 +23,7 @@ type EventoCatalogo = {
   luogo: string | null
   tipologia: string | null
   url: string
-  percorsi: { nome: string; km: number; dislivello: number | null }[]
+  percorsi: { nome: string; km: number; dislivello: number | null; tipologia?: string | null }[]
   immagine_url?: string | null
 }
 
@@ -139,22 +139,24 @@ export default function CalendarioClient() {
                               <div className="text-xs text-gray-400 mt-0.5">{ev.luogo}</div>
                             )}
                             {ev.percorsi?.length > 0 && (
-                              <div className="text-xs text-gray-500 mt-1">
+                              <div className="text-xs text-gray-500 mt-2 flex flex-col gap-1.5">
                                 {ev.percorsi.map((p, i) => (
-                                  <span key={i}>
-                                    {i > 0 && ' · '}
-                                    {p.km} km{p.dislivello ? ` / ${p.dislivello} m ↑` : ''}
-                                  </span>
+                                  <div key={i} className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-medium text-gray-700">
+                                      {p.nome !== 'Unico' && p.nome ? p.nome + ' · ' : ''}
+                                      {p.km} km{p.dislivello ? ` / ${p.dislivello} m ↑` : ''}
+                                    </span>
+                                    {p.tipologia && (
+                                      <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-100 rounded px-1.5 py-0.5 whitespace-nowrap">
+                                        {p.tipologia}
+                                      </span>
+                                    )}
+                                  </div>
                                 ))}
                               </div>
                             )}
                           </div>
                           <div className="flex flex-col items-end gap-2 shrink-0">
-                            {ev.tipologia && (
-                              <span className="text-xs bg-orange-50 text-orange-600 border border-orange-100 rounded-full px-2 py-0.5 whitespace-nowrap">
-                                {ev.tipologia}
-                              </span>
-                            )}
                             {ev.immagine_url && (
                               <button onClick={() => setImgIngrandita(ev.immagine_url!)}>
                                 <img

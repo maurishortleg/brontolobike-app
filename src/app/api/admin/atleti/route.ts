@@ -9,6 +9,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!isAdmin(user)) return Response.json({ error: 'Non autorizzato' }, { status: 403 })
 
+  // Lettura: RLS pubblica consente SELECT, va bene con il client normale
   const { data } = await supabase
     .from('atleti')
     .select('id, nome_cognome, categoria_corrente, categoria_prossima, numero_tessera, attivo')
@@ -34,8 +35,11 @@ export async function PATCH(req: NextRequest) {
     if (key in fields) update[key] = fields[key]
   }
 
-  const { error } = await supabase.from('atleti').update(update).eq('id', id)
+  // Scrittura: usa service_role per bypassare RLS (atleti non ha policy UPDATE client)
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from('atleti').update(update).eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })
 }
+

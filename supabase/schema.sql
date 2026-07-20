@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS atleti (
   categoria_corrente  TEXT NOT NULL CHECK (categoria_corrente IN ('AMATORI', 'CICLOTURISTI')),
   categoria_prossima  TEXT NOT NULL CHECK (categoria_prossima IN ('AMATORI', 'CICLOTURISTI')),
   user_id             UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  attivo              BOOLEAN NOT NULL DEFAULT true,
+  numero_tessera      TEXT,
+  data_nascita        DATE
 );
 
 INSERT INTO atleti (id, nome_cognome, genere, categoria_corrente, categoria_prossima) VALUES
@@ -445,6 +448,8 @@ CREATE TABLE IF NOT EXISTS eventi (
   nome          TEXT NOT NULL,
   data_evento   DATE,
   stagione_id   INTEGER NOT NULL REFERENCES stagioni(id),
+  url           TEXT,
+  luogo         TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -456,7 +461,8 @@ CREATE TABLE IF NOT EXISTS percorsi (
   evento_id       INTEGER NOT NULL REFERENCES eventi(id) ON DELETE CASCADE,
   nome_percorso   TEXT NOT NULL DEFAULT 'Unico',
   km              NUMERIC(6,1) NOT NULL,
-  dislivello_m    INTEGER NOT NULL DEFAULT 0
+  dislivello_m    INTEGER NOT NULL DEFAULT 0,
+  tipologia_id    INTEGER REFERENCES tipologie_evento(id)
 );
 
 -- -------------------------
@@ -471,7 +477,6 @@ CREATE TABLE IF NOT EXISTS registrazioni (
   km_effettivi    NUMERIC(6,1),
   dislivello_eff  INTEGER,
   punti           INTEGER NOT NULL DEFAULT 0,
-  note            TEXT,
   registrato_da   UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (atleta_id, percorso_id, stagione_id)

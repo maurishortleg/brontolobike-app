@@ -1,6 +1,8 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
+import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '@/lib/is-admin'
 import Link from 'next/link'
+import HomeEventiList, { type EventoUnificato } from './HomeEventiList'
 
 export default async function HomePage() {
   const supabase = await createSupabaseServerClient()
@@ -8,6 +10,100 @@ export default async function HomePage() {
 
   const atletaId = user?.user_metadata?.atleta_id ?? null
   const admin = isAdmin(user)
+
+  // ── Fetch eventi da entrambe le sorgenti in parallelo ────────────────────
+  const anonClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  const [{ data: eventiRicercati }, { data: eventiDb }, { data: percorsiDb }] =
+    await Promise.all([
+      // 1. eventi_ricercati (catalogo AI) — tutti, ordinati per data
+      anonClient
+        .from('eventi_ricercati')
+        .select('id, nome, data, data_fine, luogo, tipologia, url, percorsi, immagine_url')
+        .eq('attivo', true)
+        .not('data', 'is', null)
+        .order('data', { ascending: true }),
+
+      // 2. eventi DB (inseriti dagli utenti)
+      anonClient
+        .from('eventi')
+        .select('id, nome, data_evento, url, luogo')
+        .order('data_evento', { ascending: true }),
+
+      // 3. percorsi collegati agli eventi DB
+      anonClient
+        .from('percorsi')
+        .select('id, evento_id, nome_percorso, km, dislivello_m, tipologie_evento(nome)'),
+    ])
+
+  // ── Normalizza eventi_ricercati ─────────────────────────────────────────
+  type RawPercorsoRicercato = { nome: string; km: number | null; dislivello: number | null; tipologia: string | null }
+
+  const listaRicercati: EventoUnificato[] = (eventiRicercati ?? []).map((ev) => ({
+    id: `ricercato-${ev.id}`,
+    sorgente: 'ricercato' as const,
+    nome: ev.nome,
+    data: ev.data,
+    data_fine: ev.data_fine ?? null,
+    luogo: ev.luogo ?? null,
+    tipologia: ev.tipologia ?? null,
+    url: ev.url ?? null,
+    immagine_url: ev.immagine_url ?? null,
+    percorsi: Array.isArray(ev.percorsi)
+      ? (ev.percorsi as RawPercorsoRicercato[]).map((p) => ({
+          nome: p.nome ?? '',
+          km: p.km ?? null,
+          dislivello: p.dislivello ?? null,
+          tipologia: p.tipologia ?? null,
+        }))
+      : [],
+  }))
+
+  // ── Normalizza eventi DB + percorsi ────────────────────────────────────
+  const percorsiPerEvento: Record<string, EventoUnificato['percorsi']> = {}
+  for (const p of percorsiDb ?? []) {
+    const eid = String(p.evento_id)
+    if (!percorsiPerEvento[eid]) percorsiPerEvento[eid] = []
+    percorsiPerEvento[eid].push({
+      nome: p.nome_percorso ?? 'Percorso unico',
+      km: p.km ?? null,
+      dislivello: p.dislivello_m ?? null,
+      tipologia: (() => {
+        const te = p.tipologie_evento
+        if (!te) return null
+        if (Array.isArray(te)) return (te[0] as { nome: string } | undefined)?.nome ?? null
+        return (te as unknown as { nome: string }).nome ?? null
+      })(),
+    })
+  }
+
+  // Deduplica: rimuove eventi DB il cui nome (case-insensitive) esiste già in eventi_ricercati
+  const nomiRicercati = new Set(listaRicercati.map((e) => e.nome.toLowerCase().trim()))
+
+  const listaDb: EventoUnificato[] = (eventiDb ?? [])
+    .filter((ev) => !nomiRicercati.has(ev.nome.toLowerCase().trim()))
+    .map((ev) => ({
+      id: `db-${ev.id}`,
+      sorgente: 'db' as const,
+      nome: ev.nome,
+      data: ev.data_evento ?? null,
+      data_fine: null,
+      luogo: ev.luogo ?? null,
+      tipologia: percorsiPerEvento[String(ev.id)]?.[0]?.tipologia ?? null,
+      url: ev.url ?? null,
+      percorsi: percorsiPerEvento[String(ev.id)] ?? [],
+    }))
+
+  // ── Merge e sort per data ───────────────────────────────────────────────
+  const tuttiEventi: EventoUnificato[] = [...listaRicercati, ...listaDb].sort((a, b) => {
+    if (!a.data && !b.data) return 0
+    if (!a.data) return 1
+    if (!b.data) return -1
+    return a.data.localeCompare(b.data)
+  })
 
   return (
     <main className="min-h-screen flex flex-col items-center px-4 pt-0 overflow-hidden">
@@ -44,7 +140,7 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* Menu */}
+      {/* Contenuto principale */}
       <div className="w-full max-w-sm -mt-2 pb-10">
 
         {/* Pulsante principale */}
@@ -57,7 +153,7 @@ export default async function HomePage() {
         </Link>
 
         {/* Card menu secondario */}
-        <div className="bb-card rounded-2xl p-4 flex flex-col gap-2 mb-3">
+        <div className="bb-card rounded-2xl p-4 flex flex-col gap-2 mb-4">
           <Link href="/classifica" className="bb-btn-outline w-full py-3 rounded-xl text-center block text-sm">
             Classifica
           </Link>
@@ -102,15 +198,20 @@ export default async function HomePage() {
         </div>
 
         {user && (
-          <form action="/auth/logout" method="POST" className="text-center">
+          <form action="/auth/logout" method="POST" className="text-center mb-6">
             <button type="submit" className="text-xs transition-colors bb-btn-logout">
               Esci ({user.email})
             </button>
           </form>
         )}
 
+        {/* ── Lista eventi ─────────────────────────────────────────────── */}
+        <div className="bb-card rounded-2xl p-4">
+          <HomeEventiList eventi={tuttiEventi} />
+        </div>
+
         {/* Decorazione geometrica bottom */}
-        <div className="flex justify-center gap-3 mt-10 opacity-20">
+        <div className="flex justify-center gap-3 mt-8 opacity-20">
           <div className="w-10 h-3 rounded-full rotate-12" style={{ background: '#FF006E' }} />
           <div className="w-10 h-3 rounded-full -rotate-6" style={{ background: '#0055CC' }} />
           <div className="w-10 h-3 rounded-full rotate-3"  style={{ background: '#FF5500' }} />

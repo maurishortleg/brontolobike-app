@@ -39,20 +39,36 @@ type EventoTrovato = {
   immagine_url?: string | null
 }
 
+type EventoIniziale = {
+  nome: string
+  data: string | null
+  luogo: string | null
+  url: string | null
+  tipologia: string | null
+  percorso: {
+    nome: string
+    km: number | null
+    dislivello: number | null
+    tipologia: string | null
+  } | null
+}
+
 export default function RegistraClient({
   tipologie,
   atletaIdServer,
   stagione_id,
+  eventoIniziale,
 }: {
   tipologie: Tipologia[]
   atletaIdServer: string | null
   stagione_id: number
+  eventoIniziale?: EventoIniziale | null
 }) {
   const supabase = createSupabaseBrowserClient()
   const router = useRouter()
 
   // --- Search phase state ---
-  const [fase, setFase] = useState<'cerca' | 'form'>('cerca')
+  const [fase, setFase] = useState<'cerca' | 'form'>(eventoIniziale ? 'form' : 'cerca')
   const [queryRicerca, setQueryRicerca] = useState('')
   const [loadingRicerca, setLoadingRicerca] = useState(false)
   const [risultatiRicerca, setRisultatiRicerca] = useState<EventoTrovato[]>([])
@@ -86,6 +102,38 @@ export default function RegistraClient({
       if (stored) setAtletaId(JSON.parse(stored).id)
     }
   }, [atletaIdServer])
+
+  // Pre-compilazione da eventoIniziale (arrivo dalla lista home)
+  useEffect(() => {
+    if (!eventoIniziale) return
+    setNomeEvento(eventoIniziale.nome)
+    if (eventoIniziale.data) setDataEvento(eventoIniziale.data)
+    if (eventoIniziale.url) setUrlEvento(eventoIniziale.url)
+
+    // Helper inline: cerca tipologia per nome (indipendente da trovaTipologiaId)
+    function findTipId(nomeTip: string | null, km: number | null): number | '' {
+      if (!nomeTip) return ''
+      let nome = nomeTip
+      if (nome.toLowerCase().includes('randonn') && km != null) {
+        nome = km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
+      }
+      const match = tipologie.find((t) => t.nome.toLowerCase() === nome.toLowerCase())
+      return match ? match.id : ''
+    }
+
+    const p = eventoIniziale.percorso
+    if (p) {
+      setPercorsi([{
+        nome_percorso: p.nome || '',
+        tipologia_id: findTipId(p.tipologia, p.km),
+        km: p.km != null ? String(p.km) : '',
+        dislivello_m: p.dislivello != null ? String(p.dislivello) : '',
+      }])
+    } else if (eventoIniziale.tipologia) {
+      setPercorsi([{ nome_percorso: '', tipologia_id: findTipId(eventoIniziale.tipologia, null), km: '', dislivello_m: '' }])
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Autocomplete dal DB mentre l'utente digita
   function onQueryChange(val: string) {
@@ -124,7 +172,9 @@ export default function RegistraClient({
       const res = await fetch('/api/cerca-evento', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryRicerca }),
+        // atleta_id è necessario per la modalità senza account:
+        // la guardia anti-abuso dell'API lo usa come prova di identità.
+        body: JSON.stringify({ query: queryRicerca, atleta_id: atletaId }),
       })
       const data = await res.json()
       const trovati: EventoTrovato[] = data.risultati ?? []
@@ -487,13 +537,7 @@ export default function RegistraClient({
                         </span>
                       )}
                       {ev.luogo && <span>📍 {ev.luogo}</span>}
-                      {(() => {
-                        // Non mostrare la tipologia se i percorsi hanno etichette Randonnée miste
-                        const tipPercorsi = [...new Set(ev.percorsi?.map((p) => correggiRandonnee(p.tipologia ?? ev.tipologia, p.km)).filter(Boolean))]
-                        const hasMixedRandonnee = tipPercorsi.filter((t) => t?.toLowerCase().includes('randonn')).length > 1
-                        if (hasMixedRandonnee) return null
-                        return ev.tipologia ? <span className="text-orange-500 font-medium">{ev.tipologia}</span> : null
-                      })()}
+                      {/* Rimossa tipologia generica evento qui in alto */}
                     </div>
 
                     {ev.percorsi?.length > 0 ? (
@@ -506,10 +550,17 @@ export default function RegistraClient({
                             className="text-left flex items-center justify-between bg-gray-50 hover:bg-orange-50 hover:border-orange-400 border border-gray-200 rounded-lg px-3 py-2.5 transition-colors"
                           >
                             <span className="font-medium text-gray-900 text-sm">{p.nome}</span>
-                            <span className="text-xs text-gray-700 flex gap-2">
-                              <span>{p.km} km</span>
-                              {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-xs text-gray-700 flex gap-2">
+                                <span>{p.km} km</span>
+                                {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
+                              </span>
+                              {p.tipologia && (
+                                <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-100 rounded px-1.5 py-0.5 whitespace-nowrap">
+                                  {p.tipologia}
+                                </span>
+                              )}
+                            </div>
                           </button>
                         ))}
                         <button

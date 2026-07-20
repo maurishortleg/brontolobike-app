@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   return Response.json({ registrazioni })
 }
 
-// DELETE /api/admin/registrazioni — elimina registrazione
+// DELETE /api/admin/registrazioni — elimina registrazione (anche altrui)
 export async function DELETE(req: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -59,7 +59,10 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json()
   if (!id) return Response.json({ error: 'ID mancante' }, { status: 400 })
 
-  const { error } = await supabase.from('registrazioni').delete().eq('id', id)
+  // Usa service_role: l'admin può eliminare registrazioni altrui,
+  // la policy RLS "Delete registrazioni proprio" bloccherebbe il client normale.
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from('registrazioni').delete().eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })
@@ -79,9 +82,11 @@ export async function PATCH(req: NextRequest) {
   if (completato !== undefined) update.completato = completato
   if (km_effettivi !== undefined) update.km_effettivi = Number(km_effettivi)
 
+  // Usa service_role: l'admin modifica registrazioni altrui (la RLS blocca il client normale)
   const admin = createSupabaseAdminClient()
   const { error } = await admin.from('registrazioni').update(update).eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ ok: true })
 }
+

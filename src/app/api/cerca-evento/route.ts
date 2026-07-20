@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { tavilySearch, fetchImmaginiMappa } from '@/lib/tavily'
 
 // Deve corrispondere esattamente ai nomi nella tabella tipologie_evento
@@ -53,7 +54,20 @@ function correggiRandonnee(tipologia: string | null, km: number | null): string 
 }
 
 export async function POST(req: NextRequest) {
-  const { query } = await req.json()
+  // ── Guardia anti-abuso ────────────────────────────────────────────────────
+  // Accettato se: (a) utente autenticato con sessione Supabase,
+  //               OPPURE (b) body contiene atleta_id (modalità senza account).
+  // Questo blocca chiamate anonime esterne che consumerebbero il budget API.
+  const supabase = await createSupabaseServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const body = await req.json()
+  const { query, atleta_id: atletaIdBody } = body
+
+  if (!user && !atletaIdBody) {
+    return Response.json({ error: 'Accesso non autorizzato' }, { status: 401 })
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (!query?.trim()) {
     return Response.json({ error: 'Query mancante' }, { status: 400 })
@@ -64,6 +78,7 @@ export async function POST(req: NextRequest) {
   if (!tavilyKey) {
     return Response.json({ error: 'Chiave API di ricerca non configurata' }, { status: 500 })
   }
+
 
   const { results, images } = await tavilySearch(
     tavilyKey,
