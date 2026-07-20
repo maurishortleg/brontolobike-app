@@ -27,16 +27,16 @@ export default async function HomePage() {
         .not('data', 'is', null)
         .order('data', { ascending: true }),
 
-      // 2. eventi DB (inseriti dagli utenti)
+      // 2. eventi DB — solo colonne che esistono di sicuro (luogo/url da aggiungere su Supabase)
       anonClient
         .from('eventi')
-        .select('id, nome, data_evento, url, luogo')
+        .select('id, nome, data_evento')
         .order('data_evento', { ascending: true }),
 
-      // 3. percorsi collegati agli eventi DB
+      // 3. percorsi — senza join tipologie_evento (tipologia_id da aggiungere su Supabase)
       anonClient
         .from('percorsi')
-        .select('id, evento_id, nome_percorso, km, dislivello_m, tipologie_evento(nome)'),
+        .select('id, evento_id, nome_percorso, km, dislivello_m'),
     ])
 
   // ── Normalizza eventi_ricercati ─────────────────────────────────────────
@@ -71,12 +71,7 @@ export default async function HomePage() {
       nome: p.nome_percorso ?? 'Percorso unico',
       km: p.km ?? null,
       dislivello: p.dislivello_m ?? null,
-      tipologia: (() => {
-        const te = p.tipologie_evento
-        if (!te) return null
-        if (Array.isArray(te)) return (te[0] as { nome: string } | undefined)?.nome ?? null
-        return (te as unknown as { nome: string }).nome ?? null
-      })(),
+      tipologia: null, // tipologia_id non ancora presente nel DB reale
     })
   }
 
@@ -91,9 +86,9 @@ export default async function HomePage() {
       nome: ev.nome,
       data: ev.data_evento ?? null,
       data_fine: null,
-      luogo: ev.luogo ?? null,
+      luogo: null, // colonna luogo da aggiungere su Supabase
       tipologia: percorsiPerEvento[String(ev.id)]?.[0]?.tipologia ?? null,
-      url: ev.url ?? null,
+      url: null,   // colonna url da aggiungere su Supabase
       percorsi: percorsiPerEvento[String(ev.id)] ?? [],
     }))
 
