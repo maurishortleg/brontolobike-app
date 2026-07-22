@@ -1,15 +1,14 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import {
+  classificaPerKeyword,
+  correggiRandonnee,
+  validaTipologia,
+  TIPOLOGIE_DESCRIZIONI,
+  TIPOLOGIE_STR,
+} from '@/lib/classifica-tipologia'
 
 const ANNO = new Date().getFullYear()
-
-const TIPOLOGIE = [
-  'Bike Camp Livigno', 'Brevetto Permanente Gravel', 'Brevetto Permanente Strada',
-  'Brontolo Bike Day', 'Ciclocross', 'Gara in Circuito (CRIT)', 'Gran/Medio Fondo',
-  'Gravel', 'Gravel di GRAvellAND', 'MTB', 'Pedalata Cicloturistica',
-  'Percorso con Credenziale', 'Randonnée fino a 120Km', 'Randonnée oltre i 120Km',
-  'Trail', 'Uva Fragola',
-]
 
 function dominioUrl(url: string): string {
   try { return new URL(url).hostname.replace('www.', '') } catch { return '' }
@@ -24,14 +23,13 @@ async function fetchPagina(url: string): Promise<{ html: string; testo: string }
     })
     if (!res.ok) return null
     const html = await res.text()
-    // Rimuove script/style, poi strip tag HTML
     const testo = html
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim()
-      .slice(0, 12000) // max 12k caratteri per non saturare il contesto Gemini
+      .slice(0, 12000)
     return { html, testo }
   } catch {
     return null
@@ -46,12 +44,6 @@ function estraiOgImage(html: string, baseUrl: string): string | null {
   const src = match[1]
   if (src.startsWith('http')) return src
   try { return new URL(src, new URL(baseUrl).origin).href } catch { return null }
-}
-
-function correggiRandonnee(tipologia: string | null, km: number | null): string | null {
-  if (!tipologia?.toLowerCase().includes('randonn')) return tipologia
-  if (km == null) return tipologia
-  return km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
 }
 
 type Percorso = { nome: string; km: number | null; dislivello: number | null; tipologia: string | null }
@@ -83,7 +75,6 @@ async function geminiCall(googleKey: string, prompt: string, maxTentativi = 4): 
 async function arricchisciPercorsi(
   ev: { nome: string; tipologia: string | null; percorsi: Percorso[] },
   testoPageina: string,
-  tipologieStr: string,
   googleKey: string,
 ): Promise<Percorso[]> {
   const prompt = `Dal testo della pagina web dell'evento ciclistico "${ev.nome}", estrai TUTTI i percorsi disponibili.
@@ -92,7 +83,9 @@ Per ogni percorso crea un oggetto con:
 - nome: nome ufficiale del percorso
 - km: distanza in km (numero intero), null se non trovata
 - dislivello: dislivello in metri (numero intero), null se non trovato
-- tipologia: scegli da: ${tipologieStr} — oppure null
+- tipologia: scegli dalla lista — oppure null
+
+${TIPOLOGIE_DESCRIZIONI}
 
 Regole:
 - Cerca tutte le distanze (es. SHORT 200, CLASSIC 300, WILD 400, ecc.)
@@ -107,7 +100,12 @@ ${testoPageina}`
     if (!text) return ev.percorsi
     const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
     const parsed = JSON.parse(cleaned)
-    return Array.isArray(parsed) ? parsed : ev.percorsi
+    if (!Array.isArray(parsed)) return ev.percorsi
+    // Valida tipologie di ogni percorso
+    return parsed.map((p: Percorso) => ({
+      ...p,
+      tipologia: validaTipologia(p.nome ?? ev.nome, p.tipologia, null, p.km),
+    }))
   } catch {
     return ev.percorsi
   }
@@ -133,8 +131,6 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  const tipologieStr = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
-
   // Carica fonti dal DB
   const { data: fontiDB, error: fontiError } = await supabase
     .from('fonti_eventi')
@@ -149,19 +145,17 @@ export async function GET(req: NextRequest) {
   type Fonte = { id: number; nome: string; dominio: string; url: string; queries: string[] }
   const FONTI: Fonte[] = fontiDB
 
-  // ?fonte=N processa solo quella fonte (per trigger manuale su piano Hobby)
   const fonteParam = req.nextUrl.searchParams.get('fonte')
   const fontiDaProcessare = fonteParam !== null
     ? [FONTI[parseInt(fonteParam)]].filter(Boolean)
     : FONTI
 
-  // Processa le fonti in parallelo
+  const REGIONI = "Val d'Aosta, Piemonte, Liguria, Lombardia, Veneto, Trentino Alto Adige, Friuli Venezia Giulia, Emilia Romagna, Toscana, Marche, Umbria, Abruzzo, Molise, Lazio"
+
   const risultatiPerFonte = await Promise.all(fontiDaProcessare.map(async (fonte) => {
     const logFonte: string[] = []
     let nuoviFonte = 0
     try {
-      // Cerca eventi sul sito tramite Tavily
-      // Esegue le query in sequenza, si ferma alla prima che restituisce risultati
       let results: { title: string; url: string; content: string }[] = []
       for (const query of fonte.queries) {
         const tavilyRes = await fetch('https://api.tavily.com/search', {
@@ -179,7 +173,6 @@ export async function GET(req: NextRequest) {
         if (!tavilyRes.ok) continue
         const d = await tavilyRes.json()
         const nuovi: { title: string; url: string; content: string }[] = d.results ?? []
-        // Aggiunge risultati non duplicati per URL
         const urlEsistenti = new Set(results.map((r) => r.url))
         results = [...results, ...nuovi.filter((r) => !urlEsistenti.has(r.url))]
         if (results.length >= 8) break
@@ -194,8 +187,7 @@ export async function GET(req: NextRequest) {
         .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
         .join('\n\n---\n\n')
 
-      const REGIONI = 'Val d\'Aosta, Piemonte, Liguria, Lombardia, Veneto, Trentino Alto Adige, Friuli Venezia Giulia, Emilia Romagna, Toscana, Marche, Umbria, Abruzzo, Molise, Lazio'
-
+      // ── Prompt migliorato con descrizioni e regole di disambiguazione ──
       const prompt = `Dai seguenti risultati del sito "${fonte.nome}" (${fonte.url}), estrai gli eventi ciclistici del ${ANNO} che si svolgono nelle seguenti regioni italiane: ${REGIONI}.
 
 Per ogni evento crea un oggetto con:
@@ -203,19 +195,18 @@ Per ogni evento crea un oggetto con:
 - data: data inizio YYYY-MM-DD, null se non trovata
 - data_fine: data fine YYYY-MM-DD per eventi multi-giorno, null altrimenti
 - luogo: città o paese di partenza, null se non trovato
-- tipologia: scegli da: ${tipologieStr} — oppure null
-- url: URL diretto alla pagina specifica dell'evento (non homepage né calendario generale)
-- percorsi: array con TUTTI i percorsi disponibili dell'evento, ognuno con:
-    { nome (nome ufficiale del percorso), km (numero intero), dislivello (numero intero o null), tipologia (dalla lista o null) }
+- tipologia: scegli dalla lista seguente (con descrizioni per aiutarti)
+- url: URL diretto alla pagina specifica dell'evento
+- percorsi: array con TUTTI i percorsi { nome, km (intero), dislivello (intero o null), tipologia }
 
-Regole IMPORTANTI:
-- Includi SOLO eventi nelle regioni elencate: ${REGIONI}. Escludi tutto il Sud Italia (Campania, Puglia, Basilicata, Calabria, Sicilia, Sardegna)
-- Includi solo eventi del ${ANNO} o futuri (escludi eventi già passati)
-- Cerca TUTTI i percorsi: spesso un evento ha 3-5 distanze diverse (es. 60km, 80km, 110km, 160km) — includile tutte
-- I km e il dislivello possono essere nel testo, nelle tabelle o nelle descrizioni dei percorsi
-- Se lo stesso evento appare più volte, tienilo una volta sola con tutti i percorsi trovati
-- Per GravelLand usa sempre tipologia "Gravel di GRAvellAND"
-- Per Randonnée/Audax: OGNI percorso DEVE avere tipologia "Randonnée fino a 120Km" se km ≤ 120, altrimenti "Randonnée oltre i 120Km"
+${TIPOLOGIE_DESCRIZIONI}
+
+Regole sugli eventi:
+- Includi SOLO eventi nelle regioni: ${REGIONI}. Escludi tutto il Sud Italia
+- Includi solo eventi del ${ANNO} o futuri
+- Cerca TUTTI i percorsi: spesso un evento ha 3-5 distanze diverse
+- Se lo stesso evento appare più volte, tienilo una volta sola con tutti i percorsi
+- Per Randonnée/Audax: ogni percorso DEVE avere la tipologia corretta in base ai km (≤120 o >120)
 
 Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi nelle regioni indicate restituisci [].
 
@@ -227,8 +218,8 @@ ${textResults}`
         logFonte.push(`⚠️ ${fonte.nome}: errore Gemini (nessuna risposta dopo retry)`)
         return { log: logFonte, nuovi: nuoviFonte }
       }
-      const text = geminiText
-      const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
+
+      const cleaned = geminiText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
 
       let eventi: {
         nome: string; data: string | null; data_fine: string | null
@@ -244,43 +235,64 @@ ${textResults}`
         return { log: logFonte, nuovi: nuoviFonte }
       }
 
-      // Elaborazione sequenziale per rispettare il rate limit di Gemini
       for (const ev of eventi) {
         if (!ev.nome?.trim()) continue
 
         const dominio = dominioUrl(ev.url ?? '')
-        if (dominio === 'gravelland.it') {
-          ev.tipologia = 'Gravel di GRAvellAND'
-          ev.percorsi = ev.percorsi?.map((p) => ({ ...p, tipologia: 'Gravel di GRAvellAND' })) ?? []
-        } else {
-          const kmMax = ev.percorsi?.length > 0 ? Math.max(...ev.percorsi.map((p) => p.km ?? 0)) : null
-          const isRandonnee =
-            ev.tipologia?.toLowerCase().includes('randonn') ||
-            ev.nome?.toLowerCase().includes('randonn') ||
-            fonte.nome.toLowerCase().includes('audax') ||
-            fonte.dominio.includes('audaxitalia')
-          if (isRandonnee && kmMax != null) {
-            ev.tipologia = kmMax <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
-          } else {
-            ev.tipologia = correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia
-          }
-          ev.percorsi = ev.percorsi?.map((p) => {
-            if (p.km != null && (isRandonnee || p.tipologia?.toLowerCase().includes('randonn'))) {
-              return { ...p, tipologia: p.km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km' }
-            }
-            return { ...p, tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km) ?? p.tipologia }
-          }) ?? []
-        }
+        const kmMax = ev.percorsi?.length > 0
+          ? Math.max(...ev.percorsi.map((p) => p.km ?? 0))
+          : null
+        const isRandonnee =
+          ev.tipologia?.toLowerCase().includes('randonn') ||
+          ev.nome?.toLowerCase().includes('randonn') ||
+          fonte.nome.toLowerCase().includes('audax') ||
+          fonte.dominio.includes('audaxitalia')
 
-        // Fetch pagina evento: og:image + arricchimento percorsi se incompleti
+        // ── FASE 1: Classificazione deterministica per keyword ──
+        const tipologiaKeyword = classificaPerKeyword(ev.nome, dominio, kmMax)
+
+        // ── FASE 2: Se keyword non ha trovato nulla, usa Gemini + sanity check ──
+        let tipologiaFinale: string | null
+        if (tipologiaKeyword) {
+          tipologiaFinale = tipologiaKeyword
+        } else if (isRandonnee && kmMax != null) {
+          tipologiaFinale = kmMax <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
+        } else {
+          // Sanity check su quello che ha restituito Gemini
+          tipologiaFinale = validaTipologia(ev.nome, ev.tipologia, dominio, kmMax)
+          // Correzione Randonnée in base ai km
+          tipologiaFinale = correggiRandonnee(tipologiaFinale, kmMax)
+        }
+        ev.tipologia = tipologiaFinale
+
+        // ── Correggi tipologie dei percorsi ──
+        ev.percorsi = (ev.percorsi ?? []).map((p) => {
+          const kmP = p.km ?? null
+          let tipP: string | null
+
+          if (dominio === 'gravelland.it') {
+            tipP = 'Gravel di GRAvellAND'
+          } else if (isRandonnee || p.tipologia?.toLowerCase().includes('randonn')) {
+            tipP = kmP != null
+              ? (kmP <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km')
+              : p.tipologia
+          } else {
+            // Keyword sul nome del percorso, poi sanity check
+            tipP = classificaPerKeyword(p.nome ?? ev.nome, dominio, kmP)
+              ?? validaTipologia(p.nome ?? ev.nome, p.tipologia ?? ev.tipologia, dominio, kmP)
+              ?? correggiRandonnee(p.tipologia ?? ev.tipologia, kmP)
+          }
+          return { ...p, tipologia: tipP }
+        })
+
+        // ── Fetch pagina: og:image + arricchimento percorsi incompleti ──
         const percorsiIncompleti = !ev.percorsi?.length || ev.percorsi.some((p) => p.km == null)
         const pagina = ev.url ? await fetchPagina(ev.url) : null
         const immagineUrl = pagina ? estraiOgImage(pagina.html, ev.url) : null
 
         if (percorsiIncompleti && pagina?.testo) {
-          // Pausa prima della chiamata Gemini per evitare 429
           await new Promise((r) => setTimeout(r, 1500))
-          const percorsiArricchiti = await arricchisciPercorsi(ev, pagina.testo, tipologieStr, googleKey)
+          const percorsiArricchiti = await arricchisciPercorsi(ev, pagina.testo, googleKey)
           if (percorsiArricchiti.length > 0) ev.percorsi = percorsiArricchiti
         }
 

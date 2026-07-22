@@ -1,10 +1,13 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import {
+  classificaPerKeyword,
+  correggiRandonnee,
+  validaTipologia,
+  TIPOLOGIE_DESCRIZIONI,
+} from '@/lib/classifica-tipologia'
 
-// Quanti eventi controllare per ogni esecuzione (per non esaurire i crediti Tavily)
 const MAX_EVENTI_PER_RUN = 5
-
-// Giorni minimi tra un controllo e l'altro per lo stesso evento
 const GIORNI_TRA_CONTROLLI = 7
 
 type PercorsoTrovato = {
@@ -21,15 +24,8 @@ type EventoAggiornato = {
   tipologia: string | null
   url: string
   percorsi: PercorsoTrovato[]
+  cancellato?: boolean
 }
-
-const TIPOLOGIE = [
-  'Bike Camp Livigno', 'Brevetto Permanente Gravel', 'Brevetto Permanente Strada',
-  'Brontolo Bike Day', 'Ciclocross', 'Gara in Circuito (CRIT)', 'Gran/Medio Fondo',
-  'Gravel', 'Gravel di GRAvellAND', 'MTB', 'Pedalata Cicloturistica',
-  'Percorso con Credenziale', 'Randonnée fino a 120Km', 'Randonnée oltre i 120Km',
-  'Trail', 'Uva Fragola',
-]
 
 const SITI_PREFERENZIALI = [
   'gravelland.it', 'battistrada.com', 'audaxitalia.it', 'granfondo.it', 'endu.net',
@@ -40,7 +36,6 @@ function dominioUrl(url: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  // Verifica che la chiamata venga da Vercel Cron
   const authHeader = req.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -52,7 +47,6 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  // Prende gli eventi attivi non controllati di recente, ordinati dal meno recente
   const sogliaData = new Date()
   sogliaData.setDate(sogliaData.getDate() - GIORNI_TRA_CONTROLLI)
 
@@ -70,7 +64,6 @@ export async function GET(req: NextRequest) {
 
   const tavilyKey = process.env.TAVILY_API_KEY
   const googleKey = process.env.GOOGLE_AI_API_KEY
-  const tipologieStr = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
 
   let aggiornati = 0
   let disattivati = 0
@@ -78,7 +71,6 @@ export async function GET(req: NextRequest) {
 
   for (const evento of eventiDaControllare) {
     try {
-      // Cerca l'evento su Tavily
       let results: { title: string; url: string; content: string }[] = []
 
       if (tavilyKey) {
@@ -98,7 +90,6 @@ export async function GET(req: NextRequest) {
           const td = await tavilyRes.json()
           results = td.results ?? []
         }
-        // Fallback senza filtro dominio
         if (results.length === 0) {
           const fallbackRes = await fetch('https://api.tavily.com/search', {
             method: 'POST',
@@ -118,7 +109,6 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Se non troviamo nulla, segniamo l'evento come da verificare
       if (results.length === 0) {
         await supabase
           .from('eventi_ricercati')
@@ -129,7 +119,6 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      // Se troviamo risultati, chiediamo a Gemini di estrarre i dati aggiornati
       if (!googleKey) {
         await supabase
           .from('eventi_ricercati')
@@ -142,16 +131,19 @@ export async function GET(req: NextRequest) {
         .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
         .join('\n\n---\n\n')
 
-      const prompt = `Dai seguenti risultati di ricerca, estrai i dati aggiornati per l'evento "${evento.nome}" in formato JSON.
+      // ── Prompt migliorato con descrizioni e disambiguazione ──
+      const prompt = `Dai seguenti risultati di ricerca, estrai i dati aggiornati per l'evento ciclistico "${evento.nome}".
 
 Restituisci UN SOLO oggetto JSON con:
 - nome: nome aggiornato dell'evento
 - data: data in formato YYYY-MM-DD se trovata, altrimenti null
 - luogo: città o paese di partenza/svolgimento, null se non trovato
-- tipologia: scegli da: ${tipologieStr} — oppure null
+- tipologia: scegli dalla lista seguente
 - url: URL più autorevole
 - percorsi: array di tutti i percorsi con { nome, km, dislivello, tipologia }
 - cancellato: true se l'evento risulta cancellato o non si terrà più, altrimenti false
+
+${TIPOLOGIE_DESCRIZIONI}
 
 Restituisci SOLO JSON valido, senza markdown.
 
@@ -179,7 +171,7 @@ ${textResults}`
       const text: string = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
       const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
 
-      let parsed: EventoAggiornato & { cancellato?: boolean }
+      let parsed: EventoAggiornato
       try {
         parsed = JSON.parse(cleaned)
       } catch {
@@ -200,14 +192,41 @@ ${textResults}`
         continue
       }
 
-      // Applica regola GRAvellAND
-      if (dominioUrl(parsed.url ?? '') === 'gravelland.it') {
-        parsed.tipologia = 'Gravel di GRAvellAND'
-        parsed.percorsi = parsed.percorsi?.map((p) => ({
-          ...p,
-          tipologia: p.tipologia === 'Gravel' ? 'Gravel di GRAvellAND' : (p.tipologia ?? 'Gravel di GRAvellAND'),
-        })) ?? []
-      }
+      // ── Classificazione tipologia con logica migliorata ──
+      const dominio = dominioUrl(parsed.url ?? evento.url ?? '')
+      const kmMax = parsed.percorsi?.length > 0
+        ? Math.max(...parsed.percorsi.map((p) => p.km ?? 0))
+        : null
+
+      // 1. Prova keyword deterministiche
+      const tipologiaKeyword = classificaPerKeyword(parsed.nome ?? evento.nome, dominio, kmMax)
+      // 2. Se non trovata, usa Gemini + sanity check
+      let tipologiaFinale = tipologiaKeyword
+        ?? validaTipologia(parsed.nome ?? evento.nome, parsed.tipologia, dominio, kmMax)
+        ?? correggiRandonnee(parsed.tipologia, kmMax)
+
+      // Eredita la tipologia precedente se Gemini non ha trovato nulla
+      if (!tipologiaFinale) tipologiaFinale = evento.tipologia ?? null
+
+      // ── Correggi tipologie percorsi ──
+      const isRandonnee =
+        tipologiaFinale?.toLowerCase().includes('randonn') ||
+        (parsed.nome ?? evento.nome).toLowerCase().includes('randonn')
+
+      const percorsiCorretti = (parsed.percorsi ?? evento.percorsi ?? []).map((p: PercorsoTrovato) => {
+        const kmP = p.km ?? null
+        let tipP: string | null
+        if (dominio === 'gravelland.it') {
+          tipP = 'Gravel di GRAvellAND'
+        } else if (isRandonnee || p.tipologia?.toLowerCase().includes('randonn')) {
+          tipP = kmP != null ? (kmP <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km') : p.tipologia
+        } else {
+          tipP = classificaPerKeyword(p.nome ?? '', dominio, kmP)
+            ?? validaTipologia(p.nome ?? '', p.tipologia, dominio, kmP)
+            ?? correggiRandonnee(p.tipologia, kmP)
+        }
+        return { ...p, tipologia: tipP }
+      })
 
       await supabase
         .from('eventi_ricercati')
@@ -215,16 +234,16 @@ ${textResults}`
           nome: parsed.nome ?? evento.nome,
           data: parsed.data ?? evento.data,
           luogo: parsed.luogo ?? evento.luogo,
-          tipologia: parsed.tipologia ?? evento.tipologia,
+          tipologia: tipologiaFinale,
           url: parsed.url ?? evento.url,
-          percorsi: parsed.percorsi ?? evento.percorsi,
+          percorsi: percorsiCorretti,
           attivo: true,
           ultimo_controllo: new Date().toISOString(),
         })
         .eq('id', evento.id)
 
       aggiornati++
-      log.push(`✅ ${evento.nome}: aggiornato`)
+      log.push(`✅ ${evento.nome}: aggiornato (tipologia: ${tipologiaFinale ?? 'nessuna'})`)
     } catch (e) {
       log.push(`⚠️ ${evento.nome}: errore - ${e}`)
     }
