@@ -303,15 +303,17 @@ export default function HomeEventiList({ eventi }: { eventi: EventoUnificato[] }
         </div>
       </div>
 
-      {/* Lista */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', maxHeight: '60vh', paddingRight: 2 }}>
+      {/* Lista — block container per evitare flex-shrink sui figli */}
+      <div style={{ overflowY: 'auto', maxHeight: '60vh', paddingRight: 2 }}>
         {eventiFiltrati.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '24px 0', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
             Nessun evento prossimo — passa a &quot;Tutti&quot; per la lista completa
           </div>
         ) : (
           eventiFiltrati.map(ev => (
-            <EventoCard key={ev.id} evento={ev} onRegistra={handleRegistra} />
+            <div key={ev.id} style={{ marginBottom: 8 }}>
+              <EventoCard evento={ev} onRegistra={handleRegistra} />
+            </div>
           ))
         )}
       </div>
