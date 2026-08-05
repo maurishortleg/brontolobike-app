@@ -24,6 +24,22 @@ export const TIPOLOGIE = [
 ]
 
 /**
+ * Tipologie che non hanno una data fissa: l'atleta le può svolgere
+ * in qualsiasi momento durante la stagione.
+ * Vanno escluse dal calendario e mostrate in una sezione separata.
+ */
+export const TIPOLOGIE_LIBERE = [
+  'Brevetto Permanente Gravel',
+  'Brevetto Permanente Strada',
+  'Percorso con Credenziale',
+]
+
+/** Ritorna true se l'evento non ha una data fissa (brevetto permanente, credenziale…) */
+export function isEventoLibero(tipologia: string | null | undefined): boolean {
+  return TIPOLOGIE_LIBERE.includes(tipologia ?? '')
+}
+
+/**
  * Descrizioni dettagliate da includere nel prompt Gemini.
  * Ogni descrizione ha: definizione, parole chiave, esempi, e cosa NON è.
  */

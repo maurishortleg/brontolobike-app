@@ -27,12 +27,32 @@ type EventoCatalogo = {
   immagine_url?: string | null
 }
 
+type EventoLibero = {
+  id: string
+  nome: string
+  tipologia: string | null
+  url: string
+  percorsi: { nome: string; km: number; dislivello: number | null }[]
+  immagine_url?: string | null
+  luogo: string | null
+}
+
 export default function CalendarioClient() {
   const [dataSelezionata, setDataSelezionata] = useState<string>('')
   const [registrazioni, setRegistrazioni] = useState<Registrazione[]>([])
   const [eventiCatalogo, setEventiCatalogo] = useState<EventoCatalogo[]>([])
+  const [eventiLiberi, setEventiLiberi] = useState<EventoLibero[]>([])
   const [loading, setLoading] = useState(false)
   const [imgIngrandita, setImgIngrandita] = useState<string | null>(null)
+  const [liberiAperti, setLiberiAperti] = useState(false)
+
+  // Carica i percorsi liberi una sola volta (non dipendono dalla data)
+  useEffect(() => {
+    fetch('/api/eventi-per-data?data=2099-01-01')
+      .then(r => r.json())
+      .then(d => setEventiLiberi(d.liberi ?? []))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!dataSelezionata) { setRegistrazioni([]); setEventiCatalogo([]); return }
@@ -77,6 +97,70 @@ export default function CalendarioClient() {
           dataSelezionata={dataSelezionata}
           apiPallini="/api/calendario-club"
         />
+
+        {/* Banner percorsi liberi (sempre visibile) */}
+        {eventiLiberi.length > 0 && (
+          <div style={{
+            margin: '12px 0',
+            borderRadius: 12,
+            border: '1px solid rgba(6,182,212,0.25)',
+            background: 'rgba(6,182,212,0.05)',
+            overflow: 'hidden',
+          }}>
+            <button
+              onClick={() => setLiberiAperti(!liberiAperti)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13 }}>🔓</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#06b6d4' }}>
+                  {eventiLiberi.length} percors{eventiLiberi.length === 1 ? 'o libero' : 'i liberi'} disponibili tutto l&apos;anno
+                </span>
+              </div>
+              <span style={{ color: '#06b6d4', fontSize: 12, transition: 'transform 0.2s', transform: liberiAperti ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>▾</span>
+            </button>
+            {liberiAperti && (
+              <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <p style={{ fontSize: 11, color: 'rgba(6,182,212,0.7)', marginBottom: 8 }}>
+                  Brevetti permanenti e percorsi con credenziale — nessuna data fissa, falli quando vuoi durante la stagione.
+                </p>
+                {eventiLiberi.map(ev => (
+                  <div key={ev.id} style={{
+                    padding: '10px 12px',
+                    borderRadius: 10,
+                    background: 'rgba(6,182,212,0.07)',
+                    border: '1px solid rgba(6,182,212,0.15)',
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#ffffff', marginBottom: 2 }}>{ev.nome}</div>
+                    {ev.tipologia && <div style={{ fontSize: 10, color: '#06b6d4', marginBottom: 4 }}>{ev.tipologia}</div>}
+                    {ev.percorsi?.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                        {ev.percorsi.map((p, i) => (
+                          <span key={i}>{i > 0 ? ' · ' : ''}{p.km ? `${p.km} km` : p.nome}</span>
+                        ))}
+                      </div>
+                    )}
+                    {ev.url && (
+                      <a href={ev.url} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 10, color: 'rgba(6,182,212,0.6)', marginTop: 4, display: 'block' }}>
+                        Sito ufficiale →
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {!dataSelezionata && (
           <p className="text-center text-sm text-gray-400 mt-4">

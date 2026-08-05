@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { TIPOLOGIE_LIBERE } from '@/lib/classifica-tipologia'
 
 // GET /api/eventi-calendario?mese=YYYY-MM
-// Restituisce i giorni del mese con eventi del catalogo + tipologia per i pallini colorati
+// Restituisce i giorni del mese con eventi del catalogo + tipologia per i pallini colorati.
+// Esclusi gli eventi senza data fissa (Brevetti Permanenti, Percorso con Credenziale).
 export async function GET(req: NextRequest) {
   const mese = req.nextUrl.searchParams.get('mese')
   if (!mese) return Response.json({ giorni: [], tipologie: {} })
@@ -22,6 +24,7 @@ export async function GET(req: NextRequest) {
     .from('eventi_ricercati')
     .select('data, data_fine, tipologia')
     .eq('attivo', true)
+    .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
     .lte('data', fineMese)
     .or(`data_fine.gte.${inizioMese},data.gte.${inizioMese}`)
 

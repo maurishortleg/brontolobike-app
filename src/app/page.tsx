@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
 import { isAdmin } from '@/lib/is-admin'
+import { TIPOLOGIE_LIBERE } from '@/lib/classifica-tipologia'
 import Link from 'next/link'
 import HomeEventiList, { type EventoUnificato } from './HomeEventiList'
 
@@ -17,32 +18,51 @@ export default async function HomePage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  const [{ data: eventiRicercati }, { data: eventiDb }, { data: percorsiDb }] =
-    await Promise.all([
-      // 1. eventi_ricercati (catalogo AI) — tutti, ordinati per data
-      anonClient
-        .from('eventi_ricercati')
-        .select('id, nome, data, data_fine, luogo, tipologia, url, percorsi, immagine_url')
-        .eq('attivo', true)
-        .not('data', 'is', null)
-        .order('data', { ascending: true }),
+  const [
+    { data: eventiRicercati },
+    { data: eventiLiberiRaw },
+    { data: eventiDb },
+    { data: percorsiDb },
+  ] = await Promise.all([
+    // 1. eventi_ricercati con data fissa (esclusi tipologie libere)
+    anonClient
+      .from('eventi_ricercati')
+      .select('id, nome, data, data_fine, luogo, tipologia, url, percorsi, immagine_url')
+      .eq('attivo', true)
+      .not('data', 'is', null)
+      .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
+      .order('data', { ascending: true }),
 
-      // 2. eventi DB — solo colonne che esistono di sicuro (luogo/url da aggiungere su Supabase)
-      anonClient
-        .from('eventi')
-        .select('id, nome, data_evento')
-        .order('data_evento', { ascending: true }),
+    // 2. eventi liberi (Brevetti Permanenti, Percorso con Credenziale) — senza vincolo data
+    anonClient
+      .from('eventi_ricercati')
+      .select('id, nome, data, data_fine, luogo, tipologia, url, percorsi, immagine_url')
+      .eq('attivo', true)
+      .in('tipologia', TIPOLOGIE_LIBERE)
+      .order('nome', { ascending: true }),
 
-      // 3. percorsi — senza join tipologie_evento (tipologia_id da aggiungere su Supabase)
-      anonClient
-        .from('percorsi')
-        .select('id, evento_id, nome_percorso, km, dislivello_m'),
-    ])
+    // 3. eventi DB — solo colonne che esistono di sicuro
+    anonClient
+      .from('eventi')
+      .select('id, nome, data_evento')
+      .order('data_evento', { ascending: true }),
+
+    // 4. percorsi
+    anonClient
+      .from('percorsi')
+      .select('id, evento_id, nome_percorso, km, dislivello_m'),
+  ])
 
   // ── Normalizza eventi_ricercati ─────────────────────────────────────────
   type RawPercorsoRicercato = { nome: string; km: number | null; dislivello: number | null; tipologia: string | null }
 
-  const listaRicercati: EventoUnificato[] = (eventiRicercati ?? []).map((ev) => ({
+  type RawEventoRicercato = {
+    id: string; nome: string; data: string | null; data_fine: string | null
+    luogo: string | null; tipologia: string | null; url: string | null
+    percorsi: RawPercorsoRicercato[]; immagine_url: string | null
+  }
+
+  const normalizzaRicercato = (ev: RawEventoRicercato, libero = false): EventoUnificato => ({
     id: `ricercato-${ev.id}`,
     sorgente: 'ricercato' as const,
     nome: ev.nome,
@@ -52,6 +72,7 @@ export default async function HomePage() {
     tipologia: ev.tipologia ?? null,
     url: ev.url ?? null,
     immagine_url: ev.immagine_url ?? null,
+    isLibero: libero,
     percorsi: Array.isArray(ev.percorsi)
       ? (ev.percorsi as RawPercorsoRicercato[]).map((p) => ({
           nome: p.nome ?? '',
@@ -60,7 +81,10 @@ export default async function HomePage() {
           tipologia: p.tipologia ?? null,
         }))
       : [],
-  }))
+  })
+
+  const listaRicercati: EventoUnificato[] = (eventiRicercati ?? []).map((ev) => normalizzaRicercato(ev, false))
+  const listaLiberi: EventoUnificato[]    = (eventiLiberiRaw ?? []).map((ev) => normalizzaRicercato(ev, true))
 
   // ── Normalizza eventi DB + percorsi ────────────────────────────────────
   const percorsiPerEvento: Record<string, EventoUnificato['percorsi']> = {}
@@ -71,12 +95,14 @@ export default async function HomePage() {
       nome: p.nome_percorso ?? 'Percorso unico',
       km: p.km ?? null,
       dislivello: p.dislivello_m ?? null,
-      tipologia: null, // tipologia_id non ancora presente nel DB reale
+      tipologia: null,
     })
   }
 
-  // Deduplica: rimuove eventi DB il cui nome (case-insensitive) esiste già in eventi_ricercati
-  const nomiRicercati = new Set(listaRicercati.map((e) => e.nome.toLowerCase().trim()))
+  // Deduplica: rimuove eventi DB il cui nome esiste già in eventi_ricercati
+  const nomiRicercati = new Set(
+    [...listaRicercati, ...listaLiberi].map((e) => e.nome.toLowerCase().trim())
+  )
 
   const listaDb: EventoUnificato[] = (eventiDb ?? [])
     .filter((ev) => !nomiRicercati.has(ev.nome.toLowerCase().trim()))
@@ -86,19 +112,23 @@ export default async function HomePage() {
       nome: ev.nome,
       data: ev.data_evento ?? null,
       data_fine: null,
-      luogo: null, // colonna luogo da aggiungere su Supabase
+      luogo: null,
       tipologia: percorsiPerEvento[String(ev.id)]?.[0]?.tipologia ?? null,
-      url: null,   // colonna url da aggiungere su Supabase
+      url: null,
+      isLibero: false,
       percorsi: percorsiPerEvento[String(ev.id)] ?? [],
     }))
 
-  // ── Merge e sort per data ───────────────────────────────────────────────
-  const tuttiEventi: EventoUnificato[] = [...listaRicercati, ...listaDb].sort((a, b) => {
-    if (!a.data && !b.data) return 0
-    if (!a.data) return 1
-    if (!b.data) return -1
-    return a.data.localeCompare(b.data)
-  })
+  // ── Merge e sort per data (liberi in coda) ─────────────────────────────
+  const tuttiEventi: EventoUnificato[] = [
+    ...[...listaRicercati, ...listaDb].sort((a, b) => {
+      if (!a.data && !b.data) return 0
+      if (!a.data) return 1
+      if (!b.data) return -1
+      return a.data.localeCompare(b.data)
+    }),
+    ...listaLiberi,
+  ]
 
   return (
     <main className="min-h-screen flex flex-col items-center px-4 pt-0 overflow-hidden">
