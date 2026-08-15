@@ -4,12 +4,71 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin'
 import { isAdmin } from '@/lib/is-admin'
 
 // GET /api/admin/registrazioni?atleta_id=xxx
+// GET /api/admin/registrazioni?cerca_evento=xxx  — ricerca globale per nome evento
+// GET /api/admin/registrazioni?all=1  — tutte le registrazioni (max 200)
 export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!isAdmin(user)) return Response.json({ error: 'Non autorizzato' }, { status: 403 })
 
   const atletaId = req.nextUrl.searchParams.get('atleta_id')
+  const cercaEvento = req.nextUrl.searchParams.get('cerca_evento')
+  const all = req.nextUrl.searchParams.get('all')
+
+  // Ricerca per nome evento globale
+  if (cercaEvento) {
+    const { data: eventi_match } = await supabase
+      .from('eventi')
+      .select('id, nome, data_evento')
+      .ilike('nome', `%${cercaEvento}%`)
+      .limit(20)
+
+    if (!eventi_match?.length) return Response.json({ registrazioni: [] })
+
+    const eventoIds = eventi_match.map((e: any) => e.id)
+    const { data: percorsi_match } = await supabase
+      .from('percorsi')
+      .select('id, nome_percorso, km, dislivello_m, evento_id, tipologia_id')
+      .in('evento_id', eventoIds)
+
+    const percorsoIds = (percorsi_match ?? []).map((p: any) => p.id)
+    if (!percorsoIds.length) return Response.json({ registrazioni: [] })
+
+    const { data: regs } = await supabase
+      .from('registrazioni')
+      .select('id, atleta_id, completato, km_effettivi, dislivello_eff, punti, percorso_id, created_at')
+      .in('percorso_id', percorsoIds)
+      .order('created_at', { ascending: false })
+
+    const atletaIds = [...new Set((regs ?? []).map((r: any) => r.atleta_id))]
+    const { data: atleti_match } = atletaIds.length > 0
+      ? await supabase.from('atleti').select('id, nome_cognome').in('id', atletaIds)
+      : { data: [] }
+
+    const atletaMap = Object.fromEntries((atleti_match ?? []).map((a: any) => [a.id, a]))
+    const percorsoMap = Object.fromEntries((percorsi_match ?? []).map((p: any) => [p.id, p]))
+    const eventoMap = Object.fromEntries((eventi_match ?? []).map((e: any) => [e.id, e]))
+
+    const registrazioni = (regs ?? []).map((r: any) => {
+      const p = percorsoMap[r.percorso_id]
+      const e = p ? eventoMap[p.evento_id] : null
+      const a = atletaMap[r.atleta_id]
+      return {
+        id: r.id,
+        atleta: a?.nome_cognome ?? r.atleta_id,
+        evento: e?.nome ?? '',
+        data: e?.data_evento ?? '',
+        percorso: p?.nome_percorso ?? '',
+        km: p?.km ?? 0,
+        dislivello_m: p?.dislivello_m ?? 0,
+        completato: r.completato,
+        km_effettivi: r.km_effettivi,
+        punti: r.punti ?? 0,
+      }
+    })
+    return Response.json({ registrazioni })
+  }
+
   if (!atletaId) return Response.json({ registrazioni: [] })
 
   const { data: regs } = await supabase

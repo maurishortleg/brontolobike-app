@@ -208,10 +208,15 @@ export default async function HomePage() {
               {admin && (
                 <Link
                   href="/admin"
-                  className="w-full py-3 rounded-xl text-center block text-xs font-semibold transition-all"
-                  style={{ border: '1.5px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}
+                  className="w-full py-3 rounded-xl text-center block text-sm font-bold transition-all"
+                  style={{
+                    border: '1.5px solid #D8FF00',
+                    color: '#D8FF00',
+                    background: 'rgba(216,255,0,0.07)',
+                    letterSpacing: '0.05em',
+                  }}
                 >
-                  Pannello Admin
+                  ⚙️ Pannello Admin
                 </Link>
               )}
             </>

@@ -405,6 +405,73 @@ export default function HomeEventiList({ eventi }: { eventi: EventoUnificato[] }
   return (
     <div style={{ width: '100%' }}>
 
+      {/* ── Brevetti Permanenti e Cicloitinerari (SOPRA gli eventi) ─────────── */}
+      {eventiLiberi.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {/* Header sezione liberi */}
+          <button
+            onClick={() => setLiberiAperti(!liberiAperti)}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '4px 0',
+              marginBottom: liberiAperti ? 10 : 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.10em', textTransform: 'uppercase', color: '#06b6d4' }}>
+                🔓 Brevetti Permanenti e Cicloitinerari con Credenziale
+              </span>
+              <span style={{
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 7px',
+                borderRadius: 20,
+                background: 'rgba(6,182,212,0.15)',
+                color: '#06b6d4',
+                border: '1px solid rgba(6,182,212,0.25)',
+              }}>
+                {eventiLiberi.length}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+                {liberiAperti ? 'Chiudi' : 'Mostra'}
+              </span>
+              <span style={{ color: '#06b6d4', fontSize: 12, transition: 'transform 0.2s', transform: liberiAperti ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>
+                ▾
+              </span>
+            </div>
+          </button>
+
+          {/* Descrizione (quando chiuso) */}
+          {!liberiAperti && (
+            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4, marginTop: 4 }}>
+              Disponibili tutto l&apos;anno, senza data fissa
+            </p>
+          )}
+
+          {/* Lista liberi (collassabile) */}
+          {liberiAperti && (
+            <div>
+              {eventiLiberi.map(ev => (
+                <div key={ev.id} style={{ marginBottom: 8 }}>
+                  <EventoLiberoCard evento={ev} onRegistra={handleRegistra} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Separatore */}
+          <div style={{ height: 1, background: 'rgba(6,182,212,0.15)', marginTop: 12 }} />
+        </div>
+      )}
+
       {/* ── Sezione eventi con data fissa ─────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>
@@ -448,76 +515,10 @@ export default function HomeEventiList({ eventi }: { eventi: EventoUnificato[] }
         )}
       </div>
 
-      <p style={{ textAlign: 'center', fontSize: 11, marginTop: 8, marginBottom: 16, color: 'rgba(255,255,255,0.2)' }}>
+      <p style={{ textAlign: 'center', fontSize: 11, marginTop: 8, color: 'rgba(255,255,255,0.2)' }}>
         {eventiFiltrati.length} {eventiFiltrati.length === 1 ? 'evento' : 'eventi'}{filtro === 'prossimi' ? ' prossimi' : ' in totale'}
       </p>
 
-      {/* ── Sezione percorsi liberi (collassabile) ─────────────────────────── */}
-      {eventiLiberi.length > 0 && (
-        <div>
-          {/* Separatore */}
-          <div style={{ height: 1, background: 'rgba(6,182,212,0.15)', marginBottom: 12 }} />
-
-          {/* Header sezione liberi */}
-          <button
-            onClick={() => setLiberiAperti(!liberiAperti)}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '4px 0',
-              marginBottom: liberiAperti ? 10 : 0,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#06b6d4' }}>
-                🔓 Percorsi liberi
-              </span>
-              <span style={{
-                fontSize: 10,
-                fontWeight: 700,
-                padding: '2px 7px',
-                borderRadius: 20,
-                background: 'rgba(6,182,212,0.15)',
-                color: '#06b6d4',
-                border: '1px solid rgba(6,182,212,0.25)',
-              }}>
-                {eventiLiberi.length}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
-                {liberiAperti ? 'Chiudi' : 'Mostra'}
-              </span>
-              <span style={{ color: '#06b6d4', fontSize: 12, transition: 'transform 0.2s', transform: liberiAperti ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>
-                ▾
-              </span>
-            </div>
-          </button>
-
-          {/* Descrizione (sempre visibile) */}
-          {!liberiAperti && (
-            <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4, marginTop: 4 }}>
-              Brevetti permanenti e percorsi con credenziale — disponibili tutto l&apos;anno, senza data fissa
-            </p>
-          )}
-
-          {/* Lista liberi (collassabile) */}
-          {liberiAperti && (
-            <div>
-              {eventiLiberi.map(ev => (
-                <div key={ev.id} style={{ marginBottom: 8 }}>
-                  <EventoLiberoCard evento={ev} onRegistra={handleRegistra} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
