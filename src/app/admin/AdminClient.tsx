@@ -28,11 +28,13 @@ type Registrazione = {
   evento: string
   data: string
   percorso: string
+  tipologia?: string
   km: number
   dislivello_m: number
   completato: boolean
   km_effettivi: number
   punti: number
+  created_at?: string
 }
 
 export default function AdminClient() {
@@ -58,6 +60,28 @@ export default function AdminClient() {
   const [cercaEvento, setCercaEvento] = useState('')
   const [risultatiEvento, setRisultatiEvento] = useState<Registrazione[]>([])
   const [loadingEvento, setLoadingEvento] = useState(false)
+  // Lista globale registrazioni (sempre aggiornata)
+  const [tutteRegs, setTutteRegs] = useState<Registrazione[]>([])
+  const [loadingTutte, setLoadingTutte] = useState(true)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+
+  async function caricaTutteRegs() {
+    setLoadingTutte(true)
+    try {
+      const r = await fetch('/api/admin/registrazioni?all=1')
+      const d = await r.json()
+      setTutteRegs(d.registrazioni ?? [])
+      setLastRefresh(new Date())
+    } finally {
+      setLoadingTutte(false)
+    }
+  }
+
+  useEffect(() => {
+    caricaTutteRegs()
+    const interval = setInterval(caricaTutteRegs, 30_000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     fetch('/api/admin/fonti').then((r) => r.json()).then((d) => setFonti(d.fonti ?? []))
@@ -234,8 +258,75 @@ export default function AdminClient() {
 
   return (
     <PageShell title="Pannello Admin">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-6xl mx-auto space-y-6">
 
+        {/* ── Ultime Registrazioni ─────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-gray-700">📋 Ultime Registrazioni</h2>
+            <div className="flex items-center gap-3">
+              {lastRefresh && (
+                <span className="text-xs text-gray-400">
+                  Aggiornato {lastRefresh.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  {' '}· auto-refresh 30s
+                </span>
+              )}
+              <button
+                onClick={caricaTutteRegs}
+                disabled={loadingTutte}
+                className="text-xs bg-orange-50 text-orange-600 border border-orange-200 rounded-lg px-3 py-1 hover:bg-orange-100 transition-colors disabled:opacity-50"
+              >
+                {loadingTutte ? '⏳' : '🔄'} Aggiorna
+              </button>
+            </div>
+          </div>
+
+          {loadingTutte && tutteRegs.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-6">Caricamento...</div>
+          ) : tutteRegs.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-6">Nessuna registrazione trovata.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="border-b border-gray-100 text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="pb-2 pr-3 font-medium">Atleta</th>
+                    <th className="pb-2 pr-3 font-medium">Evento</th>
+                    <th className="pb-2 pr-3 font-medium">Tipologia</th>
+                    <th className="pb-2 pr-3 font-medium">Percorso</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Data Evento</th>
+                    <th className="pb-2 pr-3 font-medium text-right">Punti</th>
+                    <th className="pb-2 font-medium text-right">Registrato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tutteRegs.map((r) => (
+                    <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-2 pr-3 font-medium text-gray-800 whitespace-nowrap">{r.atleta}</td>
+                      <td className="py-2 pr-3 text-gray-700 max-w-[200px] truncate" title={r.evento}>{r.evento}</td>
+                      <td className="py-2 pr-3">
+                        <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded-full px-2 py-0.5 whitespace-nowrap">
+                          {r.tipologia ?? '—'}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{r.percorso}</td>
+                      <td className="py-2 pr-3 text-gray-500 text-right whitespace-nowrap">
+                        {r.data ? new Date(r.data).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
+                      </td>
+                      <td className="py-2 pr-3 text-right font-semibold text-orange-600">{r.punti}</td>
+                      <td className="py-2 text-right text-xs text-gray-400 whitespace-nowrap">
+                        {r.created_at ? new Date(r.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-gray-400 mt-2 text-right">Mostra le ultime {tutteRegs.length} registrazioni</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Atleti + Dettaglio ──────────────────────────────────────── */}
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Lista atleti */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4">

@@ -21,20 +21,20 @@ export async function GET(req: NextRequest) {
   )
 
   const { data: eventi } = await supabase
-    .from('eventi_ricercati')
-    .select('data, data_fine, tipologia')
+    .from('eventi')
+    .select('data_evento, data_fine, tipologia')
     .eq('attivo', true)
     .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
-    .lte('data', fineMese)
-    .or(`data_fine.gte.${inizioMese},data.gte.${inizioMese}`)
+    .lte('data_evento', fineMese)
+    .or(`data_fine.gte.${inizioMese},data_evento.gte.${inizioMese}`)
 
   if (!eventi?.length) return Response.json({ giorni: [], tipologie: {} })
 
   const tipologiePerGiorno: Record<string, string> = {}
 
   for (const ev of eventi) {
-    const inizio = new Date(ev.data)
-    const fine = ev.data_fine ? new Date(ev.data_fine) : new Date(ev.data)
+    const inizio = new Date(ev.data_evento)
+    const fine = ev.data_fine ? new Date(ev.data_fine) : new Date(ev.data_evento)
     const cur = new Date(inizio)
     while (cur <= fine) {
       const iso = cur.toISOString().split('T')[0]

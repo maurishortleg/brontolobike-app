@@ -296,28 +296,64 @@ ${textResults}`
           if (percorsiArricchiti.length > 0) ev.percorsi = percorsiArricchiti
         }
 
-        const { data: esistente } = await supabase
-          .from('eventi_ricercati').select('id, immagine_url').ilike('nome', ev.nome.trim()).maybeSingle()
+        const { createSupabaseAdminClient } = await import('@/lib/supabase-admin')
+        const { TIPOLOGIA_ID_MAP } = await import('@/lib/classifica-tipologia')
+        const admin = createSupabaseAdminClient()
+
+        const { data: esistente } = await admin
+          .from('eventi').select('id, immagine_url').ilike('nome', ev.nome.trim()).maybeSingle()
 
         if (!esistente) {
-          await supabase.from('eventi_ricercati').insert({
+          const { data: nuovoEv } = await admin.from('eventi').insert({
             nome: ev.nome.trim(),
-            data: ev.data ?? null,
+            data_evento: ev.data ?? null,
             data_fine: ev.data_fine ?? null,
             luogo: ev.luogo ?? null,
             tipologia: ev.tipologia ?? null,
             url: ev.url ?? fonte.url,
-            percorsi: ev.percorsi ?? [],
             immagine_url: immagineUrl,
             attivo: true,
-          })
+            stato: 'ricercato',
+          }).select('id').single()
+
+          if (nuovoEv && ev.percorsi?.length > 0) {
+            await admin.from('percorsi').insert(
+              ev.percorsi.map(p => ({
+                evento_id: nuovoEv.id,
+                nome_percorso: p.nome ?? 'Percorso unico',
+                km: p.km ?? null,
+                dislivello_m: p.dislivello ?? null,
+                tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
+              }))
+            )
+          }
           nuoviFonte++
         } else {
           const aggiornamenti: Record<string, unknown> = {}
           if (immagineUrl && !esistente.immagine_url) aggiornamenti.immagine_url = immagineUrl
-          if (percorsiIncompleti && ev.percorsi?.length) aggiornamenti.percorsi = ev.percorsi
+
           if (Object.keys(aggiornamenti).length) {
-            await supabase.from('eventi_ricercati').update(aggiornamenti).eq('id', esistente.id)
+            await admin.from('eventi').update(aggiornamenti).eq('id', esistente.id)
+          }
+
+          // Aggiunge percorsi solo se l'evento non ne ha ancora
+          if (percorsiIncompleti && ev.percorsi?.length) {
+            const { count } = await admin
+              .from('percorsi')
+              .select('id', { count: 'exact', head: true })
+              .eq('evento_id', esistente.id)
+
+            if (!count || count === 0) {
+              await admin.from('percorsi').insert(
+                ev.percorsi.map(p => ({
+                  evento_id: esistente.id,
+                  nome_percorso: p.nome ?? 'Percorso unico',
+                  km: p.km ?? null,
+                  dislivello_m: p.dislivello ?? null,
+                  tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
+                }))
+              )
+            }
           }
         }
       }

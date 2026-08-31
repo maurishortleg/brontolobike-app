@@ -12,81 +12,50 @@ export default async function HomePage() {
   const atletaId = user?.user_metadata?.atleta_id ?? null
   const admin = isAdmin(user)
 
-  // ── Fetch eventi da entrambe le sorgenti in parallelo ────────────────────
+  // ── Fetch eventi dalla tabella unificata in parallelo ────────────────────
   const anonClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
   const [
-    { data: eventiRicercati },
+    { data: eventiConData },
     { data: eventiLiberiRaw },
-    { data: eventiDb },
     { data: percorsiDb },
+    { data: tipologieDb },
   ] = await Promise.all([
-    // 1. eventi_ricercati con data fissa (esclusi tipologie libere)
+    // 1. eventi con data fissa (esclusi tipologie libere)
     anonClient
-      .from('eventi_ricercati')
-      .select('id, nome, data, data_fine, luogo, tipologia, url, percorsi, immagine_url')
+      .from('eventi')
+      .select('id, nome, data_evento, data_fine, luogo, tipologia, url, immagine_url, attivo')
       .eq('attivo', true)
-      .not('data', 'is', null)
+      .not('data_evento', 'is', null)
       .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
-      .order('data', { ascending: true }),
+      .order('data_evento', { ascending: true }),
 
     // 2. eventi liberi (Brevetti Permanenti, Percorso con Credenziale) — senza vincolo data
     anonClient
-      .from('eventi_ricercati')
-      .select('id, nome, data, data_fine, luogo, tipologia, url, percorsi, immagine_url')
+      .from('eventi')
+      .select('id, nome, data_evento, data_fine, luogo, tipologia, url, immagine_url, attivo')
       .eq('attivo', true)
       .in('tipologia', TIPOLOGIE_LIBERE)
       .order('nome', { ascending: true }),
 
-    // 3. eventi DB — solo colonne che esistono di sicuro
-    anonClient
-      .from('eventi')
-      .select('id, nome, data_evento')
-      .order('data_evento', { ascending: true }),
-
-    // 4. percorsi
+    // 3. percorsi con tipologia_id
     anonClient
       .from('percorsi')
-      .select('id, evento_id, nome_percorso, km, dislivello_m'),
+      .select('id, evento_id, nome_percorso, km, dislivello_m, tipologia_id'),
+
+    // 4. tipologie per mapping
+    anonClient
+      .from('tipologie_evento')
+      .select('id, nome'),
   ])
 
-  // ── Normalizza eventi_ricercati ─────────────────────────────────────────
-  type RawPercorsoRicercato = { nome: string; km: number | null; dislivello: number | null; tipologia: string | null }
+  // Mappa tipologie id → nome
+  const tipologiaMap = Object.fromEntries((tipologieDb ?? []).map(t => [t.id, t.nome]))
 
-  type RawEventoRicercato = {
-    id: string; nome: string; data: string | null; data_fine: string | null
-    luogo: string | null; tipologia: string | null; url: string | null
-    percorsi: RawPercorsoRicercato[]; immagine_url: string | null
-  }
-
-  const normalizzaRicercato = (ev: RawEventoRicercato, libero = false): EventoUnificato => ({
-    id: `ricercato-${ev.id}`,
-    sorgente: 'ricercato' as const,
-    nome: ev.nome,
-    data: ev.data,
-    data_fine: ev.data_fine ?? null,
-    luogo: ev.luogo ?? null,
-    tipologia: ev.tipologia ?? null,
-    url: ev.url ?? null,
-    immagine_url: ev.immagine_url ?? null,
-    isLibero: libero,
-    percorsi: Array.isArray(ev.percorsi)
-      ? (ev.percorsi as RawPercorsoRicercato[]).map((p) => ({
-          nome: p.nome ?? '',
-          km: p.km ?? null,
-          dislivello: p.dislivello ?? null,
-          tipologia: p.tipologia ?? null,
-        }))
-      : [],
-  })
-
-  const listaRicercati: EventoUnificato[] = (eventiRicercati ?? []).map((ev) => normalizzaRicercato(ev, false))
-  const listaLiberi: EventoUnificato[]    = (eventiLiberiRaw ?? []).map((ev) => normalizzaRicercato(ev, true))
-
-  // ── Normalizza eventi DB + percorsi ────────────────────────────────────
+  // Costruisce mappa percorsi per evento_id
   const percorsiPerEvento: Record<string, EventoUnificato['percorsi']> = {}
   for (const p of percorsiDb ?? []) {
     const eid = String(p.evento_id)
@@ -95,39 +64,43 @@ export default async function HomePage() {
       nome: p.nome_percorso ?? 'Percorso unico',
       km: p.km ?? null,
       dislivello: p.dislivello_m ?? null,
-      tipologia: null,
+      tipologia: p.tipologia_id ? tipologiaMap[p.tipologia_id] : null,
     })
   }
 
-  // Deduplica: rimuove eventi DB il cui nome esiste già in eventi_ricercati
-  const nomiRicercati = new Set(
-    [...listaRicercati, ...listaLiberi].map((e) => e.nome.toLowerCase().trim())
-  )
+  // Normalizza un evento della tabella unificata → EventoUnificato
+  type RawEvento = {
+    id: number; nome: string; data_evento: string | null; data_fine: string | null
+    luogo: string | null; tipologia: string | null; url: string | null; immagine_url: string | null
+  }
 
-  const listaDb: EventoUnificato[] = (eventiDb ?? [])
-    .filter((ev) => !nomiRicercati.has(ev.nome.toLowerCase().trim()))
-    .map((ev) => ({
-      id: `db-${ev.id}`,
-      sorgente: 'db' as const,
-      nome: ev.nome,
-      data: ev.data_evento ?? null,
-      data_fine: null,
-      luogo: null,
-      tipologia: percorsiPerEvento[String(ev.id)]?.[0]?.tipologia ?? null,
-      url: null,
-      isLibero: false,
-      percorsi: percorsiPerEvento[String(ev.id)] ?? [],
-    }))
+  const normalizza = (ev: RawEvento, isLibero = false): EventoUnificato => ({
+    id: `ev-${ev.id}`,
+    sorgente: 'ricercato' as const,
+    nome: ev.nome,
+    data: ev.data_evento,
+    data_fine: ev.data_fine ?? null,
+    luogo: ev.luogo ?? null,
+    tipologia: ev.tipologia ?? null,
+    url: ev.url ?? null,
+    immagine_url: ev.immagine_url ?? null,
+    isLibero,
+    percorsi: percorsiPerEvento[String(ev.id)] ?? [],
+  })
+
+  const listaConData: EventoUnificato[] = (eventiConData ?? []).map(ev => normalizza(ev, false))
+  const listaLiberi: EventoUnificato[]  = (eventiLiberiRaw ?? []).map(ev => normalizza(ev, true))
 
   // ── Merge e sort per data (liberi in coda) ─────────────────────────────
   const tuttiEventi: EventoUnificato[] = [
-    ...[...listaRicercati, ...listaDb].sort((a, b) => {
+    ...listaConData.sort((a, b) => {
       if (!a.data && !b.data) return 0
       if (!a.data) return 1
       if (!b.data) return -1
       return a.data.localeCompare(b.data)
     }),
     ...listaLiberi,
+
   ]
 
   return (

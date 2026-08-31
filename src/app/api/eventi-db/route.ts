@@ -13,15 +13,23 @@ export async function GET(req: NextRequest) {
   )
 
   const { data, error } = await supabase
-    .from('eventi_ricercati')
-    .select('*')
+    .from('eventi')
+    .select('id, nome, data_evento, data_fine, tipologia, luogo, url, immagine_url, attivo')
     .ilike('nome', `%${q}%`)
-    .order('creato_il', { ascending: false })
+    .eq('attivo', true)
+    .order('created_at', { ascending: false })
     .limit(6)
 
   if (error) {
     return Response.json({ risultati: [] })
   }
 
-  return Response.json({ risultati: data ?? [] })
+  // Compatibilità con i componenti che leggono ev.data e ev.percorsi
+  const risultati = (data ?? []).map((ev) => ({
+    ...ev,
+    data: ev.data_evento,
+    percorsi: [],
+  }))
+
+  return Response.json({ risultati })
 }

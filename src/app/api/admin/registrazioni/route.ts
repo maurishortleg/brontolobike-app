@@ -5,7 +5,7 @@ import { isAdmin } from '@/lib/is-admin'
 
 // GET /api/admin/registrazioni?atleta_id=xxx
 // GET /api/admin/registrazioni?cerca_evento=xxx  — ricerca globale per nome evento
-// GET /api/admin/registrazioni?all=1  — tutte le registrazioni (max 200)
+// GET /api/admin/registrazioni?all=1             — ultime 100 registrazioni con tutti i dettagli
 export async function GET(req: NextRequest) {
   const supabase = await createSupabaseServerClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -14,6 +14,60 @@ export async function GET(req: NextRequest) {
   const atletaId = req.nextUrl.searchParams.get('atleta_id')
   const cercaEvento = req.nextUrl.searchParams.get('cerca_evento')
   const all = req.nextUrl.searchParams.get('all')
+
+  // ── Ultime 100 registrazioni con dettagli completi ────────────────────────
+  if (all === '1') {
+    const admin = createSupabaseAdminClient()
+
+    const { data: regs } = await admin
+      .from('registrazioni')
+      .select('id, atleta_id, percorso_id, punti, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    const percorsoIds = [...new Set((regs ?? []).map((r: any) => r.percorso_id).filter(Boolean))]
+    const { data: percorsi } = percorsoIds.length > 0
+      ? await admin.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id, tipologia_id').in('id', percorsoIds)
+      : { data: [] }
+
+    const tipologiaIds = [...new Set((percorsi ?? []).map((p: any) => p.tipologia_id).filter(Boolean))]
+    const { data: tipologie } = tipologiaIds.length > 0
+      ? await admin.from('tipologie_evento').select('id, nome').in('id', tipologiaIds)
+      : { data: [] }
+
+    const eventoIds = [...new Set((percorsi ?? []).map((p: any) => p.evento_id).filter(Boolean))]
+    const { data: eventi_db } = eventoIds.length > 0
+      ? await admin.from('eventi').select('id, nome, data_evento').in('id', eventoIds)
+      : { data: [] }
+
+    const atletaIds = [...new Set((regs ?? []).map((r: any) => r.atleta_id).filter(Boolean))]
+    const { data: atleti_db } = atletaIds.length > 0
+      ? await admin.from('atleti').select('id, nome_cognome').in('id', atletaIds)
+      : { data: [] }
+
+    const percorsoMap = Object.fromEntries((percorsi ?? []).map((p: any) => [p.id, p]))
+    const eventoMap = Object.fromEntries((eventi_db ?? []).map((e: any) => [e.id, e]))
+    const atletaMap = Object.fromEntries((atleti_db ?? []).map((a: any) => [a.id, a]))
+    const tipologiaMap = Object.fromEntries((tipologie ?? []).map((t: any) => [t.id, t]))
+
+    const registrazioni = (regs ?? []).map((r: any) => {
+      const p = percorsoMap[r.percorso_id]
+      const e = p ? eventoMap[p.evento_id] : null
+      const a = atletaMap[r.atleta_id]
+      const t = p?.tipologia_id ? tipologiaMap[p.tipologia_id] : null
+      return {
+        id: r.id,
+        atleta: a?.nome_cognome ?? '—',
+        evento: e?.nome ?? '—',
+        data: e?.data_evento ?? '',
+        percorso: p?.nome_percorso ?? '—',
+        tipologia: t?.nome ?? '—',
+        punti: r.punti ?? 0,
+        created_at: r.created_at,
+      }
+    })
+    return Response.json({ registrazioni })
+  }
 
   // Ricerca per nome evento globale
   if (cercaEvento) {

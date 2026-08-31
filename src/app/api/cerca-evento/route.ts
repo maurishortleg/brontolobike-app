@@ -216,42 +216,72 @@ ${textResults}`
   // Salva nel database per autocomplete futuro
   if (risultati.length > 0) {
     try {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
+      const { createSupabaseAdminClient } = await import('@/lib/supabase-admin')
+      const { TIPOLOGIA_ID_MAP } = await import('@/lib/classifica-tipologia')
+      const admin = createSupabaseAdminClient()
+
       for (const ev of risultati) {
-        const { data: esistente } = await supabase
-          .from('eventi_ricercati')
+        // Controlla se esiste già in eventi (match per nome, case-insensitive)
+        const { data: esistente } = await admin
+          .from('eventi')
           .select('id')
           .ilike('nome', ev.nome)
           .maybeSingle()
+
         if (!esistente) {
-          await supabase.from('eventi_ricercati').insert({
+          // Inserisce nuovo evento nel catalogo
+          const { data: nuovoEv } = await admin.from('eventi').insert({
             nome: ev.nome,
-            data: ev.data,
+            data_evento: ev.data ?? null,
             data_fine: ev.data_fine ?? null,
-            luogo: ev.luogo,
-            tipologia: ev.tipologia,
-            url: ev.url,
-            percorsi: ev.percorsi,
-          })
+            luogo: ev.luogo ?? null,
+            tipologia: ev.tipologia ?? null,
+            url: ev.url ?? null,
+            stato: 'ricercato',
+            attivo: true,
+          }).select('id').single()
+
+          if (nuovoEv && ev.percorsi?.length > 0) {
+            await admin.from('percorsi').insert(
+              ev.percorsi.map(p => ({
+                evento_id: nuovoEv.id,
+                nome_percorso: p.nome,
+                km: p.km ?? null,
+                dislivello_m: p.dislivello ?? null,
+                tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
+              }))
+            )
+          }
         } else {
-          // Aggiorna ma preserva i percorsi esistenti se il nuovo risultato non ne ha
-          const { data: vecchio } = await supabase
-            .from('eventi_ricercati')
-            .select('percorsi')
-            .eq('id', esistente.id)
-            .single()
-          await supabase.from('eventi_ricercati').update({
-            data: ev.data,
+          // Aggiorna evento esistente preservando i percorsi se il nuovo risultato non ne ha
+          await admin.from('eventi').update({
+            data_evento: ev.data ?? null,
             data_fine: ev.data_fine ?? null,
-            luogo: ev.luogo,
-            tipologia: ev.tipologia,
-            url: ev.url,
-            percorsi: (ev.percorsi?.length > 0) ? ev.percorsi : (vecchio?.percorsi ?? []),
+            luogo: ev.luogo ?? null,
+            tipologia: ev.tipologia ?? null,
+            url: ev.url ?? null,
             ultimo_controllo: new Date().toISOString(),
           }).eq('id', esistente.id)
+
+          if (ev.percorsi?.length > 0) {
+            // Controlla se ha già percorsi; se no, li inserisce
+            const { count } = await admin
+              .from('percorsi')
+              .select('id', { count: 'exact', head: true })
+              .eq('evento_id', esistente.id)
+
+            if (!count || count === 0) {
+              await admin.from('percorsi').insert(
+                ev.percorsi.map(p => ({
+                  evento_id: esistente.id,
+                  nome_percorso: p.nome,
+                  km: p.km ?? null,
+                  dislivello_m: p.dislivello ?? null,
+                  tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
+                }))
+              )
+            }
+          }
         }
       }
     } catch (e) {

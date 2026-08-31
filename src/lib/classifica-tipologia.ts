@@ -34,6 +34,26 @@ export const TIPOLOGIE_LIBERE = [
   'Percorso con Credenziale',
 ]
 
+/** Mappa testo tipologia → tipologia_id (tabella tipologie_evento) */
+export const TIPOLOGIA_ID_MAP: Record<string, number> = {
+  'Gran/Medio Fondo': 1,
+  'Randonnée fino a 120Km': 2,
+  'Randonnée oltre i 120Km': 3,
+  'Pedalata Cicloturistica': 4,
+  'Brevetto Permanente Strada': 5,
+  'Brevetto Permanente Gravel': 6,
+  'Percorso con Credenziale': 7,
+  'Ciclocross': 8,
+  'MTB': 9,
+  'Gravel': 10,
+  'Gara in Circuito (CRIT)': 11,
+  'Gravel di GRAvellAND': 12,
+  'Trail': 13,
+  'Brontolo Bike Day': 14,
+  'Uva Fragola': 15,
+  'Bike Camp Livigno': 16,
+}
+
 /** Ritorna true se l'evento non ha una data fissa (brevetto permanente, credenziale…) */
 export function isEventoLibero(tipologia: string | null | undefined): boolean {
   return TIPOLOGIE_LIBERE.includes(tipologia ?? '')
