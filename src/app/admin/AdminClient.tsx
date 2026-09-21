@@ -297,13 +297,26 @@ export default function AdminClient() {
         <div className="bg-white rounded-2xl border border-gray-200 p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700">📋 Ultime Registrazioni</h2>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               {lastRefresh && (
                 <span className="text-xs text-gray-400">
                   Aggiornato {lastRefresh.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   {' '}· auto-refresh 30s
                 </span>
               )}
+              <button
+                onClick={async () => {
+                  if (!confirm('Ricalcola i punti di TUTTE le registrazioni in base alle tipologie attuali? L\'operazione può richiedere qualche secondo.')) return
+                  const r = await fetch('/api/admin/ricalcola-punti', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+                  const d = await r.json()
+                  if (r.ok) alert(`✅ Ricalcolo completato: ${d.aggiornate} registrazioni aggiornate${d.errori > 0 ? ` (${d.errori} errori)` : ''}.`)
+                  else alert('Errore: ' + d.error)
+                  caricaTutteRegs()
+                }}
+                className="text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded-lg px-3 py-1 hover:bg-blue-100 transition-colors"
+              >
+                🔁 Ricalcola punti
+              </button>
               <button
                 onClick={caricaTutteRegs}
                 disabled={loadingTutte}

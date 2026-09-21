@@ -138,11 +138,15 @@ export default function AdminEventiPanel() {
       body: JSON.stringify({ id: pid, ...dati }),
     })
     if (r.ok) {
+      const d = await r.json()
       setPercorsiMap((prev) => ({
         ...prev,
         [eventoAperto!]: prev[eventoAperto!].map((p) => p.id === pid ? { ...p, ...dati } : p),
       }))
-      flash("Percorso salvato ✓")
+      const msg = d.registrazioni_aggiornate > 0
+        ? `Percorso salvato ✓ — ${d.registrazioni_aggiornate} registrazione${d.registrazioni_aggiornate > 1 ? 'i' : ''} ricalcolata${d.registrazioni_aggiornate > 1 ? '' : ''}`
+        : "Percorso salvato ✓"
+      flash(msg)
     } else flash("Errore salvataggio percorso")
   }
 
