@@ -18,18 +18,27 @@ export default async function HomePage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
+  // Stagione attiva (es. 2027)
+  const { data: stagioneAttiva } = await anonClient
+    .from('stagioni')
+    .select('id, anno')
+    .eq('attiva', true)
+    .single()
+  const annoStagione = stagioneAttiva?.anno ?? 2027
+
   const [
     { data: eventiConData },
     { data: eventiLiberiRaw },
     { data: percorsiDb },
     { data: tipologieDb },
   ] = await Promise.all([
-    // 1. eventi con data fissa (esclusi tipologie libere)
+    // 1. eventi con data fissa della stagione attiva (esclusi tipologie libere)
     anonClient
       .from('eventi')
       .select('id, nome, data_evento, data_fine, luogo, tipologia, url, immagine_url, attivo')
       .eq('attivo', true)
       .not('data_evento', 'is', null)
+      .gte('data_evento', `${annoStagione}-01-01`)
       .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
       .order('data_evento', { ascending: true }),
 
@@ -133,7 +142,7 @@ export default async function HomePage() {
           </h1>
           <p className="text-xs font-bold tracking-[0.25em] uppercase mt-2"
              style={{ color: 'rgba(255,255,255,0.55)' }}>
-            Campionato Sociale {new Date().getFullYear()}
+            Campionato Sociale {annoStagione}
           </p>
         </div>
       </div>

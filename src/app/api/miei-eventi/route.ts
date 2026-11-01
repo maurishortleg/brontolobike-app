@@ -8,11 +8,23 @@ export async function GET() {
   const atletaId = user?.user_metadata?.atleta_id
   if (!atletaId) return Response.json({ eventi: [] })
 
-  const { data: regs } = await supabase
+  const { data: stagioneAttiva } = await supabase
+    .from('stagioni')
+    .select('id, anno')
+    .eq('attiva', true)
+    .single()
+
+  let query = supabase
     .from('registrazioni')
-    .select('id, completato, km_effettivi, punti, percorso_id')
+    .select('id, completato, km_effettivi, punti, percorso_id, stagione_id')
     .eq('atleta_id', atletaId)
     .order('created_at', { ascending: false })
+
+  if (stagioneAttiva?.id) {
+    query = query.eq('stagione_id', stagioneAttiva.id)
+  }
+
+  const { data: regs } = await query
 
   const percorsoIds = (regs ?? []).map((r: any) => r.percorso_id)
   const { data: percorsi } = percorsoIds.length > 0

@@ -1,13 +1,24 @@
+import { NextRequest } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { ultimaDomenicaOttobre } from '@/lib/date-utils'
 
-// GET /api/campione-sociale
-// Restituisce il campione solo se oggi è dopo l'ultima domenica di ottobre
-// e qualcuno ha punti > 0 entro quella data
-export async function GET() {
+// GET /api/campione-sociale?anno=2027
+// Restituisce il campione solo se oggi è dopo l'ultima domenica di ottobre dell'anno richiesto
+export async function GET(req: NextRequest) {
+  const annoParam = req.nextUrl.searchParams.get('anno')
   const supabase = await createSupabaseServerClient()
-  const anno = new Date().getFullYear()
-  const inizioAnno = `${anno}-01-01`
+
+  const { data: stagioni } = await supabase
+    .from('stagioni')
+    .select('id, anno, attiva')
+    .order('anno', { ascending: false })
+
+  const stagioneSelezionata = annoParam
+    ? stagioni?.find((s) => String(s.anno) === annoParam)
+    : stagioni?.find((s) => s.attiva) ?? stagioni?.[0]
+
+  const anno = stagioneSelezionata?.anno ?? 2027
+  const stagioneId = stagioneSelezionata?.id ?? null
   const scadenza = ultimaDomenicaOttobre(anno)
   const scadenzaStr = scadenza.toISOString().split('T')[0]
   const oggi = new Date()
@@ -17,7 +28,7 @@ export async function GET() {
   const scadenzaPassata = oggi > scadenza
 
   if (!scadenzaPassata) {
-    return Response.json({ campione: null, scadenza: scadenzaStr })
+    return Response.json({ campione: null, scadenza: scadenzaStr, anno })
   }
 
   const { data: atleti } = await supabase
@@ -28,23 +39,18 @@ export async function GET() {
       categoria_corrente,
       registrazioni (
         punti,
-        percorsi (
-          eventi (
-            data_evento
-          )
-        )
+        stagione_id
       )
     `)
 
-  if (!atleti) return Response.json({ campione: null, scadenza: scadenzaStr })
+  if (!atleti) return Response.json({ campione: null, scadenza: scadenzaStr, anno })
 
   let campione: { id: string; nome: string; categoria: string; punti: number } | null = null
 
   for (const a of atleti) {
     let punti = 0
     for (const r of a.registrazioni ?? []) {
-      const dataEvento = (r.percorsi as any)?.eventi?.data_evento
-      if (dataEvento && dataEvento >= inizioAnno && dataEvento <= scadenzaStr) {
+      if (stagioneId && (r as any).stagione_id === stagioneId) {
         punti += r.punti ?? 0
       }
     }
@@ -53,5 +59,5 @@ export async function GET() {
     }
   }
 
-  return Response.json({ campione, scadenza: scadenzaStr })
+  return Response.json({ campione, scadenza: scadenzaStr, anno })
 }

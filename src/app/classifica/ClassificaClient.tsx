@@ -18,30 +18,40 @@ type Campione = {
   punti: number
 } | null
 
+type StagioneInfo = {
+  anno: number
+  attiva: boolean
+}
+
 export default function ClassificaClient() {
   const [categoria, setCategoria] = useState<'AMATORI' | 'CICLOTURISTI'>('AMATORI')
+  const [anno, setAnno] = useState<number>(2027)
+  const [stagioni, setStagioni] = useState<StagioneInfo[]>([])
   const [classifica, setClassifica] = useState<AtletaClassifica[]>([])
   const [campione, setCampione] = useState<Campione>(null)
   const [scadenza, setScadenza] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/campione-sociale')
+    fetch(`/api/campione-sociale?anno=${anno}`)
       .then((r) => r.json())
       .then((d) => { setCampione(d.campione); setScadenza(d.scadenza) })
       .catch(() => {})
-  }, [])
+  }, [anno])
 
   useEffect(() => {
     setLoading(true)
-    fetch(`/api/classifica?categoria=${categoria}`)
+    fetch(`/api/classifica?categoria=${categoria}&anno=${anno}`)
       .then((r) => r.json())
-      .then((d) => setClassifica(d.classifica ?? []))
+      .then((d) => {
+        setClassifica(d.classifica ?? [])
+        if (d.stagioni?.length) setStagioni(d.stagioni)
+        if (d.anno) setAnno(d.anno)
+      })
       .catch(() => setClassifica([]))
       .finally(() => setLoading(false))
-  }, [categoria])
+  }, [categoria, anno])
 
-  const anno = new Date().getFullYear()
   const sogliaFinisher = categoria === 'AMATORI' ? 9000 : 4000
 
   const scadenzaFormattata = scadenza
@@ -54,9 +64,28 @@ export default function ClassificaClient() {
     <PageShell title={`Classifica ${anno}`}>
       <div>
 
+        {/* Selettore Stagione (es. 2027 Attiva / Archivio 2026) */}
+        {stagioni.length > 1 && (
+          <div className="flex gap-2 mb-4">
+            {stagioni.map((s) => (
+              <button
+                key={s.anno}
+                onClick={() => setAnno(s.anno)}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wide border transition-colors ${
+                  anno === s.anno
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-500 border-gray-200 hover:text-gray-800'
+                }`}
+              >
+                {s.attiva ? `🚴 Stagione ${s.anno}` : `🏛️ Archivio ${s.anno}`}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Campione Sociale — solo dopo l'ultima domenica di ottobre */}
         {campione && (
-          <div className="bg-orange-500 text-white rounded-2xl p-4 mb-6 flex items-center gap-3">
+          <div className="bg-orange-500 text-white rounded-2xl p-4 mb-4 flex items-center gap-3">
             <span className="text-3xl">🏆</span>
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide opacity-80">Campione Sociale {anno}</div>
@@ -68,11 +97,11 @@ export default function ClassificaClient() {
           </div>
         )}
 
-        {/* Banner Finisher — durante la stagione */}
-        {!campione && finishers.length > 0 && (
+        {/* Banner Finisher — sempre visibile se ci sono finisher */}
+        {finishers.length > 0 && (
           <div className="bg-white border border-orange-300 rounded-2xl p-4 mb-6">
             <div className="text-xs font-semibold uppercase tracking-wide text-orange-500 mb-2">
-              Finisher {anno} — {categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'}
+              🎖️ Finisher {anno} — {categoria === 'AMATORI' ? 'Amatori' : 'Cicloturisti'} ({finishers.length})
             </div>
             <div className="flex flex-col gap-1">
               {finishers.map((a) => (

@@ -11,8 +11,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const isMe = atletaIdCorrente === id
   const canSeeEvents = isMe || isAdmin(user)
 
-  const anno = new Date().getFullYear()
-  const inizioAnno = `${anno}-01-01`
+  const annoParam = req.nextUrl.searchParams.get('anno')
+  const { data: stagioni } = await supabase
+    .from('stagioni')
+    .select('id, anno, attiva')
+    .order('anno', { ascending: false })
+
+  const stagioneSelezionata = annoParam
+    ? stagioni?.find((s) => String(s.anno) === annoParam)
+    : stagioni?.find((s) => s.attiva) ?? stagioni?.[0]
+
+  const anno = stagioneSelezionata?.anno ?? 2027
+  const stagioneId = stagioneSelezionata?.id ?? 2
   const scadenza = ultimaDomenicaOttobre(anno)
   const scadenzaStr = scadenza.toISOString().split('T')[0]
 
@@ -26,39 +36,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const atleta = atletaList?.[0] ?? null
   if (!atleta) return Response.json({ error: 'Atleta non trovato' }, { status: 404 })
 
-  // 2. Tutti gli eventi dell'anno — solo id e data per il calcolo punti
-  const { data: eventiAnno } = await supabase
-    .from('eventi')
-    .select('id, nome, data_evento')
-    .gte('data_evento', inizioAnno)
-
-  const eventoIdSet = new Set((eventiAnno ?? []).map((e: any) => e.id))
-  // Mappa completa con dettagli — caricata separatamente per robustezza
-  const eventoMap: Record<string, any> = {}
-
-  // 3. Tutti i percorsi collegati a eventi dell'anno
-  const eventoIds = [...eventoIdSet]
-  const { data: percorsiAnno } = eventoIds.length > 0
-    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('evento_id', eventoIds)
-    : { data: [] }
-
-  const percorsoMap = Object.fromEntries((percorsiAnno ?? []).map((p: any) => [p.id, p]))
-  const percorsoIdSet = new Set(Object.keys(percorsoMap))
-
-  // 4. Registrazioni dell'atleta
+  // 2. Registrazioni dell'atleta nella stagione selezionata
   const { data: regs } = await supabase
     .from('registrazioni')
-    .select('id, completato, km_effettivi, punti, percorso_id')
+    .select('id, completato, km_effettivi, punti, percorso_id, stagione_id')
     .eq('atleta_id', id)
+    .eq('stagione_id', stagioneId)
     .order('created_at', { ascending: false })
 
-  // 5. Punti anno corrente
-  const puntiTotali = (regs ?? []).reduce((acc, r: any) => {
-    if (percorsoIdSet.has(String(r.percorso_id))) return acc + (r.punti ?? 0)
-    return acc
-  }, 0)
+  // 3. Punti stagione selezionata
+  const puntiTotali = (regs ?? []).reduce((acc, r: any) => acc + (r.punti ?? 0), 0)
 
-  // 6. Posizione: una sola query per tutte le registrazioni della categoria dell'anno
+  // 4. Posizione nella categoria per la stagione selezionata
   const { data: atletiCategoria } = await supabase
     .from('atleti')
     .select('id')
@@ -71,14 +60,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { data: regsAltri } = altriIds.length > 0
     ? await supabase
         .from('registrazioni')
-        .select('atleta_id, punti, percorso_id')
+        .select('atleta_id, punti')
         .in('atleta_id', altriIds)
+        .eq('stagione_id', stagioneId)
     : { data: [] }
 
-  // Somma punti per atleta (solo percorsi di eventi dell'anno)
   const puntiAltri: Record<string, number> = {}
   for (const r of regsAltri ?? []) {
-    if (!percorsoIdSet.has(String(r.percorso_id))) continue
     const aid = r.atleta_id as string
     puntiAltri[aid] = (puntiAltri[aid] ?? 0) + (r.punti ?? 0)
   }
@@ -89,7 +77,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const finisher = puntiTotali >= sogliaFinisher
   const progressione = Math.min(100, Math.round((puntiTotali / sogliaFinisher) * 100))
 
-  // 7. Dettagli eventi per lo storico (solo se serve)
+  // 5. Dettagli percorsi ed eventi per lo storico (solo se serve)
+  const percorsoIds = (regs ?? []).map((r: any) => r.percorso_id)
+  const { data: percorsiAnno } = canSeeEvents && percorsoIds.length > 0
+    ? await supabase.from('percorsi').select('id, nome_percorso, km, dislivello_m, evento_id').in('id', percorsoIds)
+    : { data: [] }
+
+  const percorsoMap = Object.fromEntries((percorsiAnno ?? []).map((p: any) => [p.id, p]))
+  const eventoIds = [...new Set((percorsiAnno ?? []).map((p: any) => p.evento_id))]
+  const eventoMap: Record<string, any> = {}
+
   if (canSeeEvents && eventoIds.length > 0) {
     const { data: evDettagli } = await supabase
       .from('eventi')
