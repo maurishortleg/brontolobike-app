@@ -32,14 +32,14 @@ export default async function HomePage() {
     { data: percorsiDb },
     { data: tipologieDb },
   ] = await Promise.all([
-    // 1. eventi con data fissa della stagione attiva (esclusi tipologie libere)
+    // 1. eventi con data fissa della stagione attiva (tipologia è null sugli eventi normali, è sui singoli percorsi)
     anonClient
       .from('eventi')
       .select('id, nome, data_evento, data_fine, luogo, tipologia, url, immagine_url, attivo')
       .eq('attivo', true)
       .not('data_evento', 'is', null)
       .gte('data_evento', `${annoStagione}-01-01`)
-      .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
+      .is('tipologia', null)
       .order('data_evento', { ascending: true }),
 
     // 2. eventi liberi (Brevetti Permanenti, Percorso con Credenziale) — senza vincolo data

@@ -1,4 +1,4 @@
-﻿import { NextRequest } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { createSupabaseAdminClient } from "@/lib/supabase-admin"
 import {
@@ -136,32 +136,47 @@ export async function GET(req: NextRequest) {
         continue
       }
 
+      const { classificaPercorso, TIPOLOGIE_LIBERE } = await import("@/lib/classifica-tipologia")
       const dominio = dominioUrl(parsed.url ?? evento.url ?? "")
-      const kmMax = parsed.percorsi?.length > 0 ? Math.max(...parsed.percorsi.map(p => p.km ?? 0)) : null
-      const tipologiaKeyword = classificaPerKeyword(parsed.nome ?? evento.nome, dominio, kmMax)
-      let tipologiaFinale = tipologiaKeyword ?? validaTipologia(parsed.nome ?? evento.nome, parsed.tipologia, dominio, kmMax) ?? correggiRandonnee(parsed.tipologia, kmMax)
-      if (!tipologiaFinale) tipologiaFinale = evento.tipologia ?? null
+      const tipologiaPadre = evento.tipologia && TIPOLOGIE_LIBERE.includes(evento.tipologia)
+        ? evento.tipologia
+        : null
 
-      const isRandonnee = tipologiaFinale?.toLowerCase().includes("randonn") || (parsed.nome ?? evento.nome).toLowerCase().includes("randonn")
       const percorsiPreesistenti = percorsiPerEvento[String(evento.id)] ?? []
       const percorsiCorretti = (parsed.percorsi ?? percorsiPreesistenti).map((p: PercorsoTrovato) => {
-        const kmP = p.km ?? null
-        let tipP: string | null
-        if (dominio === "gravelland.it") tipP = "Gravel di GRAvellAND"
-        else if (isRandonnee || p.tipologia?.toLowerCase().includes("randonn")) tipP = kmP != null ? (kmP <= 120 ? "Randonn\u00e9e fino a 120Km" : "Randonn\u00e9e oltre i 120Km") : p.tipologia
-        else tipP = classificaPerKeyword(p.nome ?? "", dominio, kmP) ?? validaTipologia(p.nome ?? "", p.tipologia, dominio, kmP) ?? correggiRandonnee(p.tipologia, kmP)
+        const tipP = classificaPercorso({
+          nomePercorso: p.nome,
+          tipologiaPercorsoAI: p.tipologia,
+          nomeEvento: parsed.nome ?? evento.nome,
+          tipologiaEventoAI: parsed.tipologia ?? evento.tipologia,
+          dominioUrl: dominio,
+          km: p.km ?? null,
+        })
         return { ...p, tipologia: tipP }
       })
 
-      await admin.from("eventi").update({ nome: parsed.nome ?? evento.nome, data_evento: parsed.data ?? evento.data_evento, luogo: parsed.luogo ?? evento.luogo, tipologia: tipologiaFinale, url: parsed.url ?? evento.url, attivo: true, ultimo_controllo: new Date().toISOString() }).eq("id", evento.id)
+      await admin.from("eventi").update({
+        nome: parsed.nome ?? evento.nome,
+        data_evento: parsed.data ?? evento.data_evento,
+        luogo: parsed.luogo ?? evento.luogo,
+        tipologia: tipologiaPadre,
+        url: parsed.url ?? evento.url,
+        attivo: true,
+        ultimo_controllo: new Date().toISOString(),
+      }).eq("id", evento.id)
 
-      if (percorsiCorretti.length > 0) {
-        await admin.from("percorsi").delete().eq("evento_id", evento.id)
-        await admin.from("percorsi").insert(percorsiCorretti.map(p => ({ evento_id: evento.id, nome_percorso: p.nome ?? "Percorso unico", km: p.km ?? null, dislivello_m: p.dislivello ?? null, tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null })))
+      if (percorsiCorretti.length > 0 && percorsiPreesistenti.length === 0) {
+        await admin.from("percorsi").insert(percorsiCorretti.map(p => ({
+          evento_id: evento.id,
+          nome_percorso: p.nome ?? "Percorso unico",
+          km: p.km ?? 0,
+          dislivello_m: p.dislivello ?? 0,
+          tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
+        })))
       }
 
       aggiornati++
-      log.push("OK " + evento.nome + ": aggiornato (" + (tipologiaFinale ?? "nessuna") + ")")
+      log.push("OK " + evento.nome + ": aggiornato (" + percorsiCorretti.length + " percorsi)")
     } catch (e) {
       log.push("WARN " + evento.nome + ": errore - " + e)
     }

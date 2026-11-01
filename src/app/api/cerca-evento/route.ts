@@ -165,47 +165,30 @@ ${textResults}`
 
   let risultati: EventoTrovato[] = []
   try {
+    const { classificaPercorso, TIPOLOGIE_LIBERE } = await import('@/lib/classifica-tipologia')
     let parsed = JSON.parse(cleaned) as EventoTrovato[]
     if (!Array.isArray(parsed)) return Response.json({ risultati: [] })
 
-    // Correggi tipologie per regole speciali
+    // Classifica SOLO i singoli percorsi (l'evento padre non ha tipologia di coefficiente, salvo percorsi liberi)
     parsed = parsed.map((ev) => {
       const dominio = dominioUrl(ev.url)
-
-      // Regola GRAvellAND
-      if (dominio === 'gravelland.it') {
-        return {
-          ...ev,
-          tipologia: 'Gravel di GRAvellAND',
-          percorsi: ev.percorsi.map((p) => ({
-            ...p,
-            tipologia: p.tipologia === 'Gravel' ? 'Gravel di GRAvellAND' : (p.tipologia ?? 'Gravel di GRAvellAND'),
-          })),
-        }
-      }
-
-      // Regola Randonnée: assegna la categoria per ogni percorso in base ai suoi km specifici
-      const isRandonnee =
-        ev.tipologia?.toLowerCase().includes('randonn') ||
-        ev.nome?.toLowerCase().includes('randonn') ||
-        ev.url?.toLowerCase().includes('audax')
-
-      const percorsiCorrotti = ev.percorsi.map((p) => {
-        if (p.km != null && (isRandonnee || p.tipologia?.toLowerCase().includes('randonn'))) {
-          return { ...p, tipologia: p.km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km' }
-        }
-        return { ...p, tipologia: correggiRandonnee(p.tipologia ?? ev.tipologia, p.km) }
-      })
-
-      // Tipologia evento = quella del percorso più lungo
-      const kmMax = percorsiCorrotti.length > 0
-        ? Math.max(...percorsiCorrotti.map((p) => p.km ?? 0))
+      const tipologiaPadre = ev.tipologia && TIPOLOGIE_LIBERE.includes(ev.tipologia)
+        ? ev.tipologia
         : null
-      const tipologiaEvento = isRandonnee && kmMax != null
-        ? (kmMax <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km')
-        : (correggiRandonnee(ev.tipologia, kmMax) ?? ev.tipologia)
 
-      return { ...ev, tipologia: tipologiaEvento, percorsi: percorsiCorrotti }
+      const percorsiClassificati = (ev.percorsi ?? []).map((p) => ({
+        ...p,
+        tipologia: classificaPercorso({
+          nomePercorso: p.nome,
+          tipologiaPercorsoAI: p.tipologia,
+          nomeEvento: ev.nome,
+          tipologiaEventoAI: ev.tipologia,
+          dominioUrl: dominio,
+          km: p.km ?? null,
+        }),
+      }))
+
+      return { ...ev, tipologia: tipologiaPadre, percorsi: percorsiClassificati }
     })
 
     risultati = parsed
@@ -213,25 +196,36 @@ ${textResults}`
     return Response.json({ risultati: [] })
   }
 
-  // Salva nel database per autocomplete futuro
+  // Salva nel database per autocomplete futuro (senza creare doppioni)
   if (risultati.length > 0) {
     try {
       const { createSupabaseAdminClient } = await import('@/lib/supabase-admin')
-      const { TIPOLOGIA_ID_MAP } = await import('@/lib/classifica-tipologia')
+      const { TIPOLOGIA_ID_MAP, normalizzaNomeEvento } = await import('@/lib/classifica-tipologia')
       const admin = createSupabaseAdminClient()
 
+      const { data: stagioneAttiva } = await admin
+        .from('stagioni')
+        .select('id')
+        .eq('attiva', true)
+        .single()
+
+      const { data: tuttiEventi } = await admin
+        .from('eventi')
+        .select('id, nome, url')
+
       for (const ev of risultati) {
-        // Controlla se esiste già in eventi (match per nome, case-insensitive)
-        const { data: esistente } = await admin
-          .from('eventi')
-          .select('id')
-          .ilike('nome', ev.nome)
-          .maybeSingle()
+        const normEv = normalizzaNomeEvento(ev.nome)
+        const cleanUrl = (ev.url ?? '').trim().toLowerCase().replace(/\/+$/, '')
+
+        const esistente = (tuttiEventi ?? []).find((e) => {
+          if (normEv && normalizzaNomeEvento(e.nome) === normEv) return true
+          if (cleanUrl && e.url && e.url.trim().toLowerCase().replace(/\/+$/, '') === cleanUrl) return true
+          return false
+        })
 
         if (!esistente) {
-          // Inserisce nuovo evento nel catalogo
           const { data: nuovoEv } = await admin.from('eventi').insert({
-            nome: ev.nome,
+            nome: ev.nome.trim(),
             data_evento: ev.data ?? null,
             data_fine: ev.data_fine ?? null,
             luogo: ev.luogo ?? null,
@@ -239,32 +233,22 @@ ${textResults}`
             url: ev.url ?? null,
             stato: 'ricercato',
             attivo: true,
+            stagione_id: stagioneAttiva?.id ?? null,
           }).select('id').single()
 
           if (nuovoEv && ev.percorsi?.length > 0) {
             await admin.from('percorsi').insert(
               ev.percorsi.map(p => ({
                 evento_id: nuovoEv.id,
-                nome_percorso: p.nome,
-                km: p.km ?? null,
-                dislivello_m: p.dislivello ?? null,
+                nome_percorso: p.nome || 'Percorso unico',
+                km: p.km ?? 0,
+                dislivello_m: p.dislivello ?? 0,
                 tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
               }))
             )
           }
         } else {
-          // Aggiorna evento esistente preservando i percorsi se il nuovo risultato non ne ha
-          await admin.from('eventi').update({
-            data_evento: ev.data ?? null,
-            data_fine: ev.data_fine ?? null,
-            luogo: ev.luogo ?? null,
-            tipologia: ev.tipologia ?? null,
-            url: ev.url ?? null,
-            ultimo_controllo: new Date().toISOString(),
-          }).eq('id', esistente.id)
-
           if (ev.percorsi?.length > 0) {
-            // Controlla se ha già percorsi; se no, li inserisce
             const { count } = await admin
               .from('percorsi')
               .select('id', { count: 'exact', head: true })
@@ -274,9 +258,9 @@ ${textResults}`
               await admin.from('percorsi').insert(
                 ev.percorsi.map(p => ({
                   evento_id: esistente.id,
-                  nome_percorso: p.nome,
-                  km: p.km ?? null,
-                  dislivello_m: p.dislivello ?? null,
+                  nome_percorso: p.nome || 'Percorso unico',
+                  km: p.km ?? 0,
+                  dislivello_m: p.dislivello ?? 0,
                   tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
                 }))
               )

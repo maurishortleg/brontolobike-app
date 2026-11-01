@@ -75,7 +75,7 @@ function PercorsoCard({
   evento: EventoUnificato
   onRegistra: (ev: EventoUnificato, p: PercorsoEvento) => void
 }) {
-  const colore = colorePerTipologia(percorso.tipologia ?? evento.tipologia)
+  const colore = colorePerTipologia(percorso.tipologia)
   const dettagli = [
     percorso.km != null ? `${percorso.km} km` : null,
     percorso.dislivello != null ? `↑${percorso.dislivello} m` : null,
@@ -98,8 +98,21 @@ function PercorsoCard({
           <div style={{ fontSize: 12, fontWeight: 600, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {percorso.nome || 'Percorso unico'}
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
-            {dettagli}
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 1 }}>
+            <span>{dettagli}</span>
+            {percorso.tipologia && (
+              <span style={{
+                fontSize: 10,
+                padding: '1px 6px',
+                borderRadius: 6,
+                background: 'rgba(255,255,255,0.08)',
+                color: colore,
+                border: `1px solid ${colore}55`,
+                fontWeight: 600,
+              }}>
+                {percorso.tipologia}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -134,7 +147,7 @@ function EventoCard({
   onRegistra: (ev: EventoUnificato, p?: PercorsoEvento) => void
 }) {
   const [aperto, setAperto] = useState(false)
-  const colore = colorePerTipologia(evento.tipologia)
+  const colore = '#FF5500'
   const haPercorsi = evento.percorsi.length > 0
 
   return (
@@ -172,11 +185,10 @@ function EventoCard({
           <div style={{ fontSize: 13, fontWeight: 700, color: '#ffffff', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {evento.nome}
           </div>
-          {/* Tipologia */}
-          {evento.tipologia && (
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-              {evento.tipologia}
-              {haPercorsi && <span style={{ marginLeft: 6, color: 'rgba(255,255,255,0.25)' }}>· {evento.percorsi.length} percorso{evento.percorsi.length > 1 ? 'i' : ''}</span>}
+          {/* Conteggio percorsi (senza tipologia sull'evento) */}
+          {haPercorsi && (
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>
+              {evento.percorsi.length} percors{evento.percorsi.length > 1 ? 'i disponibili' : 'o disponibile'}
             </div>
           )}
         </div>

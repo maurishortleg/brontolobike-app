@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     .from('eventi')
     .select('data_evento, data_fine, tipologia')
     .eq('attivo', true)
-    .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
+    .is('tipologia', null)
     .lte('data_evento', fineMese)
     .or(`data_fine.gte.${inizioMese},data_evento.gte.${inizioMese}`)
 

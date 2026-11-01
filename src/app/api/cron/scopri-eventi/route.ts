@@ -1,14 +1,11 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import {
-  classificaPerKeyword,
-  correggiRandonnee,
-  validaTipologia,
+  classificaPercorso,
+  normalizzaNomeEvento,
   TIPOLOGIE_DESCRIZIONI,
-  TIPOLOGIE_STR,
+  TIPOLOGIE_LIBERE,
 } from '@/lib/classifica-tipologia'
-
-const ANNO = new Date().getFullYear()
 
 function dominioUrl(url: string): string {
   try { return new URL(url).hostname.replace('www.', '') } catch { return '' }
@@ -73,23 +70,23 @@ async function geminiCall(googleKey: string, prompt: string, maxTentativi = 4): 
 }
 
 async function arricchisciPercorsi(
-  ev: { nome: string; tipologia: string | null; percorsi: Percorso[] },
+  ev: { nome: string; tipologia: string | null; percorsi: Percorso[]; url?: string },
   testoPageina: string,
   googleKey: string,
 ): Promise<Percorso[]> {
   const prompt = `Dal testo della pagina web dell'evento ciclistico "${ev.nome}", estrai TUTTI i percorsi disponibili.
 
 Per ogni percorso crea un oggetto con:
-- nome: nome ufficiale del percorso
+- nome: nome ufficiale del percorso (es. "Lungo Strada", "Corto Strada", "Percorso Gravel", ecc.)
 - km: distanza in km (numero intero), null se non trovata
 - dislivello: dislivello in metri (numero intero), null se non trovato
-- tipologia: scegli dalla lista — oppure null
+- tipologia: scegli dalla lista in base alle caratteristiche SPECIFICHE di questo singolo percorso (strada/gravel/mtb e km) — oppure null
 
 ${TIPOLOGIE_DESCRIZIONI}
 
 Regole:
-- Cerca tutte le distanze (es. SHORT 200, CLASSIC 300, WILD 400, ecc.)
-- I km e il dislivello possono essere scritti come "300 km / 4600 D+" o simili
+- Cerca tutte le distanze (es. 220 km strada, 115 km strada, 98 km gravel, ecc.)
+- ATTENZIONE: all'interno dello stesso evento possono esserci percorsi di tipologie diverse (es. percorsi Randonnée su strada ≤120km o >120km e un percorso Gravel!). Classifica ciascun percorso individualmente!
 - Restituisci SOLO un array JSON valido senza markdown
 
 TESTO PAGINA:
@@ -101,10 +98,17 @@ ${testoPageina}`
     const cleaned = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
     const parsed = JSON.parse(cleaned)
     if (!Array.isArray(parsed)) return ev.percorsi
-    // Valida tipologie di ogni percorso
+    const dominio = dominioUrl(ev.url ?? '')
     return parsed.map((p: Percorso) => ({
       ...p,
-      tipologia: validaTipologia(p.nome ?? ev.nome, p.tipologia, null, p.km),
+      tipologia: classificaPercorso({
+        nomePercorso: p.nome,
+        tipologiaPercorsoAI: p.tipologia,
+        nomeEvento: ev.nome,
+        tipologiaEventoAI: ev.tipologia,
+        dominioUrl: dominio,
+        km: p.km,
+      }),
     }))
   } catch {
     return ev.percorsi
@@ -131,6 +135,13 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
+  const { data: stagioneAttiva } = await supabase
+    .from('stagioni')
+    .select('id, anno')
+    .eq('attiva', true)
+    .single()
+  const ANNO = stagioneAttiva?.anno ?? 2027
+
   // Carica fonti dal DB
   const { data: fontiDB, error: fontiError } = await supabase
     .from('fonti_eventi')
@@ -152,12 +163,35 @@ export async function GET(req: NextRequest) {
 
   const REGIONI = "Val d'Aosta, Piemonte, Liguria, Lombardia, Veneto, Trentino Alto Adige, Friuli Venezia Giulia, Emilia Romagna, Toscana, Marche, Umbria, Abruzzo, Molise, Lazio"
 
+  const { createSupabaseAdminClient } = await import('@/lib/supabase-admin')
+  const { TIPOLOGIA_ID_MAP } = await import('@/lib/classifica-tipologia')
+  const admin = createSupabaseAdminClient()
+
+  // Pre-carica tutti gli eventi esistenti per deduplicazione rigorosa (per nome normalizzato o URL)
+  const { data: eventiEsistentiDB } = await admin
+    .from('eventi')
+    .select('id, nome, data_evento, url, immagine_url')
+
+  const mappaEsistentiPerNome = new Map<string, { id: number; immagine_url: string | null }>()
+  const mappaEsistentiPerUrl = new Map<string, { id: number; immagine_url: string | null }>()
+
+  for (const e of eventiEsistentiDB ?? []) {
+    const norm = normalizzaNomeEvento(e.nome)
+    if (norm) mappaEsistentiPerNome.set(norm, { id: e.id, immagine_url: e.immagine_url })
+    if (e.url) {
+      const cleanUrl = e.url.trim().toLowerCase().replace(/\/+$/, '')
+      mappaEsistentiPerUrl.set(cleanUrl, { id: e.id, immagine_url: e.immagine_url })
+    }
+  }
+
   const risultatiPerFonte = await Promise.all(fontiDaProcessare.map(async (fonte) => {
     const logFonte: string[] = []
     let nuoviFonte = 0
     try {
       let results: { title: string; url: string; content: string }[] = []
-      for (const query of fonte.queries) {
+      for (const rawQuery of fonte.queries) {
+        // Assicura che la query cerchi nell'anno della stagione attiva
+        const query = rawQuery.replace(/\b202[5-9]\b/g, String(ANNO))
         const tavilyRes = await fetch('https://api.tavily.com/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -187,26 +221,28 @@ export async function GET(req: NextRequest) {
         .map((r) => `TITOLO: ${r.title}\nURL: ${r.url}\nCONTENUTO: ${r.content}`)
         .join('\n\n---\n\n')
 
-      // ── Prompt migliorato con descrizioni e regole di disambiguazione ──
       const prompt = `Dai seguenti risultati del sito "${fonte.nome}" (${fonte.url}), estrai gli eventi ciclistici del ${ANNO} che si svolgono nelle seguenti regioni italiane: ${REGIONI}.
 
 Per ogni evento crea un oggetto con:
-- nome: nome completo e ufficiale dell'evento
+- nome: nome completo e ufficiale dell'evento (senza aggiungere l'anno se non fa parte del nome)
 - data: data inizio YYYY-MM-DD, null se non trovata
 - data_fine: data fine YYYY-MM-DD per eventi multi-giorno, null altrimenti
 - luogo: città o paese di partenza, null se non trovato
-- tipologia: scegli dalla lista seguente (con descrizioni per aiutarti)
 - url: URL diretto alla pagina specifica dell'evento
-- percorsi: array con TUTTI i percorsi { nome, km (intero), dislivello (intero o null), tipologia }
+- percorsi: array con TUTTI i percorsi disponibili dentro l'evento: { nome, km (intero), dislivello (intero o null), tipologia }
 
 ${TIPOLOGIE_DESCRIZIONI}
 
-Regole sugli eventi:
-- Includi SOLO eventi nelle regioni: ${REGIONI}. Escludi tutto il Sud Italia
+Regole FONDAMENTALI:
+- NON assegnare una tipologia unica all'evento, ma classifica OGNI SINGOLO PERCORSO nella proprietà "percorsi"!
+- All'interno dello stesso evento possono esserci percorsi di categorie diverse:
+  Esempio: Evento "Mirando Milano" ->
+  • Percorso 1 (220km strada) -> tipologia: "Randonnée oltre i 120Km"
+  • Percorso 2 (115km strada) -> tipologia: "Randonnée fino a 120Km"
+  • Percorso 3 (98km gravel)  -> tipologia: "Gravel"
+- Includi SOLO eventi nelle regioni: ${REGIONI}. Escludi il Sud Italia
 - Includi solo eventi del ${ANNO} o futuri
-- Cerca TUTTI i percorsi: spesso un evento ha 3-5 distanze diverse
-- Se lo stesso evento appare più volte, tienilo una volta sola con tutti i percorsi
-- Per Randonnée/Audax: ogni percorso DEVE avere la tipologia corretta in base ai km (≤120 o >120)
+- Se lo stesso evento appare più volte, restituiscilo UNA SOLA VOLTA unendo tutti i suoi percorsi
 
 Restituisci SOLO un array JSON valido senza markdown. Se non trovi eventi nelle regioni indicate restituisci [].
 
@@ -223,7 +259,7 @@ ${textResults}`
 
       let eventi: {
         nome: string; data: string | null; data_fine: string | null
-        luogo: string | null; tipologia: string | null; url: string
+        luogo: string | null; tipologia?: string | null; url: string
         percorsi: Percorso[]
       }[]
 
@@ -239,69 +275,51 @@ ${textResults}`
         if (!ev.nome?.trim()) continue
 
         const dominio = dominioUrl(ev.url ?? '')
-        const kmMax = ev.percorsi?.length > 0
-          ? Math.max(...ev.percorsi.map((p) => p.km ?? 0))
-          : null
-        const isRandonnee =
-          ev.tipologia?.toLowerCase().includes('randonn') ||
-          ev.nome?.toLowerCase().includes('randonn') ||
+        const isFonteRando =
           fonte.nome.toLowerCase().includes('audax') ||
           fonte.dominio.includes('audaxitalia')
 
-        // ── FASE 1: Classificazione deterministica per keyword ──
-        const tipologiaKeyword = classificaPerKeyword(ev.nome, dominio, kmMax)
+        // L'evento padre NON ha tipologia di coefficiente (a meno che non sia un Brevetto Permanente / Credenziale libero)
+        const tipologiaPadre = ev.tipologia && TIPOLOGIE_LIBERE.includes(ev.tipologia)
+          ? ev.tipologia
+          : null
 
-        // ── FASE 2: Se keyword non ha trovato nulla, usa Gemini + sanity check ──
-        let tipologiaFinale: string | null
-        if (tipologiaKeyword) {
-          tipologiaFinale = tipologiaKeyword
-        } else if (isRandonnee && kmMax != null) {
-          tipologiaFinale = kmMax <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
-        } else {
-          // Sanity check su quello che ha restituito Gemini
-          tipologiaFinale = validaTipologia(ev.nome, ev.tipologia, dominio, kmMax)
-          // Correzione Randonnée in base ai km
-          tipologiaFinale = correggiRandonnee(tipologiaFinale, kmMax)
-        }
-        ev.tipologia = tipologiaFinale
-
-        // ── Correggi tipologie dei percorsi ──
+        // Classifica OGNI SINGOLO PERCORSO individualmente
         ev.percorsi = (ev.percorsi ?? []).map((p) => {
-          const kmP = p.km ?? null
-          let tipP: string | null
-
-          if (dominio === 'gravelland.it') {
-            tipP = 'Gravel di GRAvellAND'
-          } else if (isRandonnee || p.tipologia?.toLowerCase().includes('randonn')) {
-            tipP = kmP != null
-              ? (kmP <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km')
-              : p.tipologia
-          } else {
-            // Keyword sul nome del percorso, poi sanity check
-            tipP = classificaPerKeyword(p.nome ?? ev.nome, dominio, kmP)
-              ?? validaTipologia(p.nome ?? ev.nome, p.tipologia ?? ev.tipologia, dominio, kmP)
-              ?? correggiRandonnee(p.tipologia ?? ev.tipologia, kmP)
-          }
+          const tipP = classificaPercorso({
+            nomePercorso: p.nome,
+            tipologiaPercorsoAI: p.tipologia,
+            nomeEvento: ev.nome,
+            tipologiaEventoAI: isFonteRando ? 'Randonnée' : (ev.tipologia ?? null),
+            dominioUrl: dominio,
+            km: p.km ?? null,
+          })
           return { ...p, tipologia: tipP }
         })
 
-        // ── Fetch pagina: og:image + arricchimento percorsi incompleti ──
+        // Fetch pagina: og:image + arricchimento percorsi incompleti
         const percorsiIncompleti = !ev.percorsi?.length || ev.percorsi.some((p) => p.km == null)
         const pagina = ev.url ? await fetchPagina(ev.url) : null
         const immagineUrl = pagina ? estraiOgImage(pagina.html, ev.url) : null
 
         if (percorsiIncompleti && pagina?.testo) {
           await new Promise((r) => setTimeout(r, 1500))
-          const percorsiArricchiti = await arricchisciPercorsi(ev, pagina.testo, googleKey)
+          const percorsiArricchiti = await arricchisciPercorsi(
+            { nome: ev.nome, tipologia: isFonteRando ? 'Randonnée' : (ev.tipologia ?? null), percorsi: ev.percorsi, url: ev.url },
+            pagina.testo,
+            googleKey
+          )
           if (percorsiArricchiti.length > 0) ev.percorsi = percorsiArricchiti
         }
 
-        const { createSupabaseAdminClient } = await import('@/lib/supabase-admin')
-        const { TIPOLOGIA_ID_MAP } = await import('@/lib/classifica-tipologia')
-        const admin = createSupabaseAdminClient()
-
-        const { data: esistente } = await admin
-          .from('eventi').select('id, immagine_url').ilike('nome', ev.nome.trim()).maybeSingle()
+        // Controllo anti-doppioni tramite nome normalizzato o URL
+        const normNome = normalizzaNomeEvento(ev.nome)
+        const cleanUrl = (ev.url ?? '').trim().toLowerCase().replace(/\/+$/, '')
+        const esistente =
+          (normNome ? mappaEsistentiPerNome.get(normNome) : undefined) ??
+          (cleanUrl && cleanUrl !== fonte.url.trim().toLowerCase().replace(/\/+$/, '')
+            ? mappaEsistentiPerUrl.get(cleanUrl)
+            : undefined)
 
         if (!esistente) {
           const { data: nuovoEv } = await admin.from('eventi').insert({
@@ -309,25 +327,31 @@ ${textResults}`
             data_evento: ev.data ?? null,
             data_fine: ev.data_fine ?? null,
             luogo: ev.luogo ?? null,
-            tipologia: ev.tipologia ?? null,
+            tipologia: tipologiaPadre,
             url: ev.url ?? fonte.url,
             immagine_url: immagineUrl,
             attivo: true,
             stato: 'ricercato',
+            stagione_id: stagioneAttiva?.id ?? null,
           }).select('id').single()
 
-          if (nuovoEv && ev.percorsi?.length > 0) {
-            await admin.from('percorsi').insert(
-              ev.percorsi.map(p => ({
-                evento_id: nuovoEv.id,
-                nome_percorso: p.nome ?? 'Percorso unico',
-                km: p.km ?? null,
-                dislivello_m: p.dislivello ?? null,
-                tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
-              }))
-            )
+          if (nuovoEv) {
+            if (normNome) mappaEsistentiPerNome.set(normNome, { id: nuovoEv.id, immagine_url: immagineUrl })
+            if (cleanUrl) mappaEsistentiPerUrl.set(cleanUrl, { id: nuovoEv.id, immagine_url: immagineUrl })
+
+            if (ev.percorsi?.length > 0) {
+              await admin.from('percorsi').insert(
+                ev.percorsi.map(p => ({
+                  evento_id: nuovoEv.id,
+                  nome_percorso: p.nome ?? 'Percorso unico',
+                  km: p.km ?? 0,
+                  dislivello_m: p.dislivello ?? 0,
+                  tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
+                }))
+              )
+            }
+            nuoviFonte++
           }
-          nuoviFonte++
         } else {
           const aggiornamenti: Record<string, unknown> = {}
           if (immagineUrl && !esistente.immagine_url) aggiornamenti.immagine_url = immagineUrl
@@ -337,7 +361,7 @@ ${textResults}`
           }
 
           // Aggiunge percorsi solo se l'evento non ne ha ancora
-          if (percorsiIncompleti && ev.percorsi?.length) {
+          if (ev.percorsi?.length) {
             const { count } = await admin
               .from('percorsi')
               .select('id', { count: 'exact', head: true })
@@ -348,8 +372,8 @@ ${textResults}`
                 ev.percorsi.map(p => ({
                   evento_id: esistente.id,
                   nome_percorso: p.nome ?? 'Percorso unico',
-                  km: p.km ?? null,
-                  dislivello_m: p.dislivello ?? null,
+                  km: p.km ?? 0,
+                  dislivello_m: p.dislivello ?? 0,
                   tipologia_id: p.tipologia ? (TIPOLOGIA_ID_MAP[p.tipologia] ?? null) : null,
                 }))
               )

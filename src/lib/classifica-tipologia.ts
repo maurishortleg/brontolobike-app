@@ -265,5 +265,88 @@ export function validaTipologia(
   return tipologiaAI
 }
 
+/**
+ * Normalizza il nome di un evento per evitare duplicati (rimuove anno, prefissi comuni, punteggiatura).
+ */
+export function normalizzaNomeEvento(nome: string): string {
+  return nome
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b202[4-9]\b/g, '')
+    .replace(/\b(gran\s*fondo|granfondo|medio\s*fondo|mediofondo|randonnee|rando|gf|asd|a\.s\.d\.)\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim()
+}
+
+/**
+ * Classifica un SINGOLO percorso all'interno di un evento.
+ * Regola chiave: dentro uno stesso evento (es. "Mirando Milano") possono esserci percorsi
+ * con tipologie diverse:
+ * - Percorso 220km strada -> "Randonnée oltre i 120Km"
+ * - Percorso 115km strada -> "Randonnée fino a 120Km"
+ * - Percorso 98km gravel  -> "Gravel" (Gravel non di GRAvellAND)
+ */
+export function classificaPercorso(opts: {
+  nomePercorso: string | null | undefined
+  tipologiaPercorsoAI: string | null | undefined
+  nomeEvento: string
+  tipologiaEventoAI?: string | null
+  dominioUrl?: string | null
+  km: number | null | undefined
+}): string | null {
+  const np = (opts.nomePercorso ?? '').toLowerCase()
+  const tp = (opts.tipologiaPercorsoAI ?? '').toLowerCase()
+  const ne = (opts.nomeEvento ?? '').toLowerCase()
+  const te = (opts.tipologiaEventoAI ?? '').toLowerCase()
+  const d = (opts.dominioUrl ?? '').toLowerCase()
+  const km = opts.km ?? null
+
+  // 1. Dominio o nome GRAvellAND -> sempre "Gravel di GRAvellAND"
+  if (d.includes('gravelland') || ne.includes('gravelland') || np.includes('gravelland')) {
+    return 'Gravel di GRAvellAND'
+  }
+
+  // 2. Se il SINGOLO percorso specifica "gravel" nel nome o nella tipologia AI -> "Gravel"
+  //    (anche se l'evento principale è una Randonnée o Granfondo!)
+  if (np.includes('gravel') || tp === 'gravel' || tp.includes('gravel')) {
+    if (np.includes('brevetto permanente') || tp.includes('brevetto permanente')) {
+      return 'Brevetto Permanente Gravel'
+    }
+    return 'Gravel'
+  }
+
+  // 3. Se il singolo percorso specifica MTB / Trail / Ciclocross
+  if (np.includes('mtb') || np.includes('mountain bike') || tp === 'mtb') return 'MTB'
+  if ((np.includes('trail') && !np.includes('gravel')) || tp === 'trail') return 'Trail'
+  if (np.includes('ciclocross') || np.includes('cyclocross') || tp === 'ciclocross') return 'Ciclocross'
+
+  // 4. Se è una Randonnée / Audax (percorso stradale dentro evento Rando o percorso Rando)
+  const isRandoContext =
+    tp.includes('randonn') ||
+    np.includes('randonn') ||
+    np.includes('rando') ||
+    ne.includes('randonn') ||
+    ne.includes('mirando') ||
+    ne.includes('audax') ||
+    d.includes('audaxitalia') ||
+    te.includes('randonn')
+
+  if (isRandoContext) {
+    if (km != null) {
+      return km <= 120 ? 'Randonnée fino a 120Km' : 'Randonnée oltre i 120Km'
+    }
+    return 'Randonnée oltre i 120Km'
+  }
+
+  // 5. Altrimenti classifica per keyword sul percorso o sull'evento
+  return (
+    classificaPerKeyword(opts.nomePercorso || opts.nomeEvento, opts.dominioUrl, km) ??
+    validaTipologia(opts.nomePercorso || opts.nomeEvento, opts.tipologiaPercorsoAI ?? opts.tipologiaEventoAI ?? null, opts.dominioUrl, km) ??
+    correggiRandonnee(opts.tipologiaPercorsoAI ?? opts.tipologiaEventoAI ?? null, km)
+  )
+}
+
 /** Stringa tipologie per prompt Gemini (lista semplice) */
 export const TIPOLOGIE_STR = TIPOLOGIE.map((t) => `"${t}"`).join(', ')
+

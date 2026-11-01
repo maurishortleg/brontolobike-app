@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     .from('eventi')
     .select('id, nome, data_evento, data_fine, tipologia, luogo, url, immagine_url')
     .eq('attivo', true)
-    .not('tipologia', 'in', `(${TIPOLOGIE_LIBERE.map(t => `"${t}"`).join(',')})`)
+    .is('tipologia', null)
     .lte('data_evento', data)
     .or(`data_fine.gte.${data},and(data_fine.is.null,data_evento.eq.${data})`)
     .order('data_evento', { ascending: true })

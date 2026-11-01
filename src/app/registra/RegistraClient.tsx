@@ -337,27 +337,59 @@ export default function RegistraClient({
 
     setLoading(true)
 
-    const { data: evento, error: errEvento } = await supabase
+    // 1. Cerca se l'evento esiste già (evita di creare copie quando più atleti registrano lo stesso evento)
+    const { data: evEsistenti } = await supabase
       .from('eventi')
-      .insert({ nome: nomeEvento.trim(), data_evento: dataEvento, stagione_id, url: urlEvento || null })
       .select('id')
-      .single()
-    if (errEvento) { setErrore('Errore nel salvataggio evento.'); setLoading(false); return }
+      .ilike('nome', nomeEvento.trim())
+      .limit(1)
 
-    const percorsiData = percorsi.map((pc) => ({
-      evento_id: evento.id,
-      nome_percorso: pc.nome_percorso.trim() || 'Percorso',
-      km: parseFloat(pc.km) || 0,
-      dislivello_m: parseInt(pc.dislivello_m) || 0,
-      tipologia_id: pc.tipologia_id || null,
-    }))
-    const { data: percorsiCreati, error: errPercorsi } = await supabase
+    let eventoId = evEsistenti?.[0]?.id ?? null
+
+    if (!eventoId) {
+      const { data: nuovoEvento, error: errEvento } = await supabase
+        .from('eventi')
+        .insert({ nome: nomeEvento.trim(), data_evento: dataEvento, stagione_id, url: urlEvento || null })
+        .select('id')
+        .single()
+      if (errEvento || !nuovoEvento) { setErrore('Errore nel salvataggio evento.'); setLoading(false); return }
+      eventoId = nuovoEvento.id
+    }
+
+    // 2. Cerca se i percorsi esistono già sotto questo evento; altrimenti li inserisce senza duplicarli
+    const { data: percorsiEsistenti } = await supabase
       .from('percorsi')
-      .insert(percorsiData)
-      .select('id')
-    if (errPercorsi) { setErrore('Errore nel salvataggio percorsi.'); setLoading(false); return }
+      .select('id, nome_percorso, km, tipologia_id')
+      .eq('evento_id', eventoId)
 
-    const percorsoId = percorsiCreati[percorsoSelezionato].id
+    const kmScelto = parseFloat(p.km) || 0
+    const nomeScelto = p.nome_percorso.trim() || 'Percorso'
+
+    let percorsoId: number | null = null
+    const matchPercorso = (percorsiEsistenti ?? []).find(
+      (pe) =>
+        (Number(pe.km) === kmScelto && pe.tipologia_id === p.tipologia_id) ||
+        (pe.nome_percorso.toLowerCase() === nomeScelto.toLowerCase() && Number(pe.km) === kmScelto)
+    )
+
+    if (matchPercorso) {
+      percorsoId = matchPercorso.id
+    } else {
+      const { data: nuovoPercorso, error: errPercorsi } = await supabase
+        .from('percorsi')
+        .insert({
+          evento_id: eventoId,
+          nome_percorso: nomeScelto,
+          km: kmScelto,
+          dislivello_m: parseInt(p.dislivello_m) || 0,
+          tipologia_id: p.tipologia_id || null,
+        })
+        .select('id')
+        .single()
+      if (errPercorsi || !nuovoPercorso) { setErrore('Errore nel salvataggio percorso.'); setLoading(false); return }
+      percorsoId = nuovoPercorso.id
+    }
+
     const kmEff = completato ? parseFloat(p.km) : parseFloat(kmEffettivi)
     const dislivEff = completato ? parseInt(p.dislivello_m) : parseInt(dislivelloEff)
 
@@ -370,7 +402,7 @@ export default function RegistraClient({
       dislivello_eff: dislivEff,
       punti,
     })
-    if (errReg) { setErrore('Errore nel salvataggio registrazione.'); setLoading(false); return }
+    if (errReg) { setErrore('Errore nel salvataggio registrazione (forse già registrato).'); setLoading(false); return }
 
     setSuccesso(punti)
     setLoading(false)
@@ -433,7 +465,7 @@ export default function RegistraClient({
                   }}
                   onBlur={() => setTimeout(() => setMostraSuggerimenti(false), 150)}
                   onFocus={() => suggerimenti.length > 0 && setMostraSuggerimenti(true)}
-                  placeholder="Es. Greenlands Varese 2026"
+                  placeholder="Es. Mirando Milano"
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-900"
                   autoFocus
                 />
@@ -447,7 +479,6 @@ export default function RegistraClient({
                           <div className="text-xs text-gray-700 mt-0.5">
                             {ev.data && new Date(ev.data).toLocaleDateString('it-IT')}
                             {ev.luogo && ` · 📍 ${ev.luogo}`}
-                            {ev.tipologia && ` · ${ev.tipologia}`}
                           </div>
                         </div>
                         {ev.percorsi?.length > 0 ? (
@@ -456,12 +487,17 @@ export default function RegistraClient({
                               <button
                                 key={j}
                                 onMouseDown={() => selezionaEvento(ev, p)}
-                                className="text-left flex items-center justify-between hover:bg-orange-50 rounded-lg px-2 py-1.5 transition-colors"
+                                className="text-left flex items-center justify-between hover:bg-orange-50 rounded-lg px-2 py-1.5 transition-colors gap-2"
                               >
                                 <span className="text-sm text-gray-900">{p.nome}</span>
-                                <span className="text-xs text-gray-700 flex gap-2">
+                                <span className="text-xs text-gray-700 flex items-center gap-2 shrink-0">
                                   <span>{p.km} km</span>
                                   {p.dislivello != null && <span>{p.dislivello} m ↑</span>}
+                                  {p.tipologia && (
+                                    <span className="text-[10px] bg-orange-50 text-orange-600 border border-orange-100 rounded px-1.5 py-0.5 whitespace-nowrap">
+                                      {p.tipologia}
+                                    </span>
+                                  )}
                                 </span>
                               </button>
                             ))}
