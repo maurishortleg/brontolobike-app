@@ -32,7 +32,7 @@ function colorePerTipologia(tipologia: string | null): string {
   if (!tipologia) return '#6b7280'
   const t = tipologia.toLowerCase()
   if (t.includes('gran') || t.includes('medio fondo')) return '#FF5500'
-  if (t.includes('gravelland')) return '#16a34a'
+  if (t.includes('gravelland') && !t.includes('non di')) return '#16a34a'
   if (t.includes('gravel')) return '#22c55e'
   if (t.includes('mtb')) return '#15803d'
   if (t.includes('randonn')) return '#0055CC'

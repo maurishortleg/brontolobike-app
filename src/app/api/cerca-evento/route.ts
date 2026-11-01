@@ -12,7 +12,7 @@ const TIPOLOGIE = [
   'Ciclocross',
   'Gara in Circuito (CRIT)',
   'Gran/Medio Fondo',
-  'Gravel',
+  'Gravel (non di GRAvellAND)',
   'Gravel di GRAvellAND',
   'MTB',
   'Pedalata Cicloturistica',

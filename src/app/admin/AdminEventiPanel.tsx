@@ -62,11 +62,11 @@ export default function AdminEventiPanel() {
     } catch {}
     // Fetch tipologie via supabase pubblico - endpoint non esiste ancora, uso lista hardcoded
     setTipologie([
-      { id: 1, nome: "Gran/Medio Fondo" }, { id: 2, nome: "Randonnee fino a 120Km" },
-      { id: 3, nome: "Randonnee oltre i 120Km" }, { id: 4, nome: "Pedalata Cicloturistica" },
+      { id: 1, nome: "Gran/Medio Fondo" }, { id: 2, nome: "Randonnée fino a 120Km" },
+      { id: 3, nome: "Randonnée oltre i 120Km" }, { id: 4, nome: "Pedalata Cicloturistica" },
       { id: 5, nome: "Brevetto Permanente Strada" }, { id: 6, nome: "Brevetto Permanente Gravel" },
       { id: 7, nome: "Percorso con Credenziale" }, { id: 8, nome: "Ciclocross" },
-      { id: 9, nome: "MTB" }, { id: 10, nome: "Gravel" }, { id: 11, nome: "Gara in Circuito (CRIT)" },
+      { id: 9, nome: "MTB" }, { id: 10, nome: "Gravel (non di GRAvellAND)" }, { id: 11, nome: "Gara in Circuito (CRIT)" },
       { id: 12, nome: "Gravel di GRAvellAND" }, { id: 13, nome: "Trail" },
       { id: 14, nome: "Brontolo Bike Day" }, { id: 15, nome: "Uva Fragola" },
       { id: 16, nome: "Bike Camp Livigno" },

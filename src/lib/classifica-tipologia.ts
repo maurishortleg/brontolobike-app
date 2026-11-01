@@ -12,7 +12,7 @@ export const TIPOLOGIE = [
   'Ciclocross',
   'Gara in Circuito (CRIT)',
   'Gran/Medio Fondo',
-  'Gravel',
+  'Gravel (non di GRAvellAND)',
   'Gravel di GRAvellAND',
   'MTB',
   'Pedalata Cicloturistica',
@@ -46,6 +46,7 @@ export const TIPOLOGIA_ID_MAP: Record<string, number> = {
   'Ciclocross': 8,
   'MTB': 9,
   'Gravel': 10,
+  'Gravel (non di GRAvellAND)': 10,
   'Gara in Circuito (CRIT)': 11,
   'Gravel di GRAvellAND': 12,
   'Trail': 13,
@@ -70,7 +71,7 @@ Scegli la tipologia dalla lista seguente. Per ogni tipo trovi: descrizione, paro
 
 2. "Pedalata Cicloturistica" — Uscita NON competitiva, aperta a tutti, senza classifica. Keyword: pedalata, cicloturistica, passeggiata, giro, ciclopasseggiata, cicloescursione. NON è: una gara, anche se c'è un percorso definito.
 
-3. "Gravel" — Evento su sterrato/ghiaia con bici gravel/ciclocross. NON è: MTB (troppo tecnico), Trail (sentieri alpini), Gran Fondo (solo asfalto).
+3. "Gravel (non di GRAvellAND)" — Evento/percorso su sterrato/ghiaia con bici gravel/ciclocross NON organizzato da GravellAnd. NON è: MTB (troppo tecnico), Trail (sentieri alpini), Gran Fondo (solo asfalto).
 
 4. "Gravel di GRAvellAND" — Evento ESCLUSIVAMENTE organizzato da GravelLand (gravelland.it). Keyword: gravelland. Se il sito è gravelland.it → usa SEMPRE questo tipo.
 
@@ -99,7 +100,7 @@ Scegli la tipologia dalla lista seguente. Per ogni tipo trovi: descrizione, paro
 16. "Bike Camp Livigno" — Campo di allenamento a Livigno. Keyword: bike camp, livigno.
 
 REGOLE CRITICHE:
-- Se il nome contiene "Trail" senza "Gravel" → usa "Trail", non "Gravel"
+- Se il nome contiene "Trail" senza "Gravel" → usa "Trail", non "Gravel (non di GRAvellAND)"
 - Se il nome contiene "Gran Fondo" o "Granfondo" → usa "Gran/Medio Fondo", non "Pedalata Cicloturistica"  
 - Se il dominio è gravelland.it → usa SEMPRE "Gravel di GRAvellAND"
 - Per Randonnée/Audax: la km del percorso determina quale delle due scegliere (≤120 o >120)
@@ -123,7 +124,7 @@ export function classificaPerKeyword(
   const d = (dominioUrl ?? '').toLowerCase()
 
   // Regola 1: GravelLand (dominio prioritario assoluto)
-  if (d.includes('gravelland') || n.includes('gravelland')) {
+  if (d.includes('gravelland') || (n.includes('gravelland') && !n.includes('non di'))) {
     return 'Gravel di GRAvellAND'
   }
 
@@ -178,9 +179,9 @@ export function classificaPerKeyword(
     return 'Gara in Circuito (CRIT)'
   }
 
-  // Regola 9: Gravel (generico)
-  if (n.includes('gravel') && !n.includes('gravelland')) {
-    return 'Gravel'
+  // Regola 9: Gravel (non di GRAvellAND)
+  if (n.includes('gravel') && (!n.includes('gravelland') || n.includes('non di'))) {
+    return 'Gravel (non di GRAvellAND)'
   }
 
   // Regola 10: Brontolo
@@ -226,9 +227,13 @@ export function validaTipologia(
   const d = (dominioUrl ?? '').toLowerCase()
   const t = tipologiaAI.toLowerCase()
 
-  // GravelLand vince sempre
-  if (d.includes('gravelland') || n.includes('gravelland')) {
+  // GravelLand vince sempre (a meno che sia esplicitamente "non di gravelland")
+  if (d.includes('gravelland') || (n.includes('gravelland') && !n.includes('non di'))) {
     return 'Gravel di GRAvellAND'
+  }
+
+  if (t === 'gravel') {
+    return 'Gravel (non di GRAvellAND)'
   }
 
   // Trail classificato come Gravel o altra cosa
@@ -285,7 +290,7 @@ export function normalizzaNomeEvento(nome: string): string {
  * con tipologie diverse:
  * - Percorso 220km strada -> "Randonnée oltre i 120Km"
  * - Percorso 115km strada -> "Randonnée fino a 120Km"
- * - Percorso 98km gravel  -> "Gravel" (Gravel non di GRAvellAND)
+ * - Percorso 98km gravel  -> "Gravel (non di GRAvellAND)"
  */
 export function classificaPercorso(opts: {
   nomePercorso: string | null | undefined
@@ -303,17 +308,21 @@ export function classificaPercorso(opts: {
   const km = opts.km ?? null
 
   // 1. Dominio o nome GRAvellAND -> sempre "Gravel di GRAvellAND"
-  if (d.includes('gravelland') || ne.includes('gravelland') || np.includes('gravelland')) {
+  if (
+    d.includes('gravelland') ||
+    (ne.includes('gravelland') && !ne.includes('non di')) ||
+    (np.includes('gravelland') && !np.includes('non di'))
+  ) {
     return 'Gravel di GRAvellAND'
   }
 
-  // 2. Se il SINGOLO percorso specifica "gravel" nel nome o nella tipologia AI -> "Gravel"
+  // 2. Se il SINGOLO percorso specifica "gravel" nel nome o nella tipologia AI -> "Gravel (non di GRAvellAND)"
   //    (anche se l'evento principale è una Randonnée o Granfondo!)
   if (np.includes('gravel') || tp === 'gravel' || tp.includes('gravel')) {
     if (np.includes('brevetto permanente') || tp.includes('brevetto permanente')) {
       return 'Brevetto Permanente Gravel'
     }
-    return 'Gravel'
+    return 'Gravel (non di GRAvellAND)'
   }
 
   // 3. Se il singolo percorso specifica MTB / Trail / Ciclocross
