@@ -77,8 +77,8 @@ function PercorsoCard({
 }) {
   const colore = colorePerTipologia(percorso.tipologia)
   const dettagli = [
-    percorso.km != null ? `${percorso.km} km` : null,
-    percorso.dislivello != null ? `↑${percorso.dislivello} m` : null,
+    percorso.km != null && Number(percorso.km) > 0 ? `${percorso.km} km` : null,
+    percorso.dislivello != null && Number(percorso.dislivello) > 0 ? `↑${percorso.dislivello} m` : null,
   ].filter(Boolean).join(' · ') || 'Dati non disponibili'
 
   return (

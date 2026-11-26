@@ -216,8 +216,8 @@ export default function RegistraClient({
       ? ev.percorsi.map((p) => ({
           nome_percorso: p.nome,
           tipologia_id: trovaTipologiaId(p.tipologia ?? ev.tipologia, p.km) || tipologiaEventoId,
-          km: String(p.km),
-          dislivello_m: p.dislivello != null ? String(p.dislivello) : '',
+          km: p.km != null && Number(p.km) > 0 ? String(p.km) : '',
+          dislivello_m: p.dislivello != null && Number(p.dislivello) > 0 ? String(p.dislivello) : '',
         }))
       : [{ nome_percorso: '', tipologia_id: tipologiaEventoId, km: '', dislivello_m: '' }]
 
@@ -228,8 +228,8 @@ export default function RegistraClient({
       const soloPercorso: Percorso = {
         nome_percorso: percorsoScelto.nome,
         tipologia_id: trovaTipologiaId(percorsoScelto.tipologia ?? ev.tipologia, percorsoScelto.km) || tipologiaEventoId,
-        km: String(percorsoScelto.km),
-        dislivello_m: percorsoScelto.dislivello != null ? String(percorsoScelto.dislivello) : '',
+        km: percorsoScelto.km != null && Number(percorsoScelto.km) > 0 ? String(percorsoScelto.km) : '',
+        dislivello_m: percorsoScelto.dislivello != null && Number(percorsoScelto.dislivello) > 0 ? String(percorsoScelto.dislivello) : '',
       }
       setPercorsi([soloPercorso])
       setPercorsoSelezionato(0)
