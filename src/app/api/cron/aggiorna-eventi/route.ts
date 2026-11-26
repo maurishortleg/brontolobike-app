@@ -37,7 +37,17 @@ function dominioUrl(url: string): string {
   try { return new URL(url).hostname.replace("www.", "") } catch { return "" }
 }
 
+const CRON_DISABILITATO = true
+
 export async function GET(req: NextRequest) {
+  if (CRON_DISABILITATO) {
+    return Response.json({
+      ok: false,
+      disabilitato: true,
+      messaggio: 'Routine di aggiornamento automatico eventi temporaneamente disattivata.',
+    })
+  }
+
   const authHeader = req.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== "Bearer " + cronSecret) {

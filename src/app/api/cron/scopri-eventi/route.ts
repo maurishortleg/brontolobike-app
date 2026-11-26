@@ -117,7 +117,17 @@ ${testoPageina}`
 
 export const maxDuration = 60
 
+const CRON_DISABILITATO = true
+
 export async function GET(req: NextRequest) {
+  if (CRON_DISABILITATO) {
+    return Response.json({
+      ok: false,
+      disabilitato: true,
+      messaggio: 'Routine di ricerca automatica eventi temporaneamente disattivata.',
+    })
+  }
+
   const authHeader = req.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
